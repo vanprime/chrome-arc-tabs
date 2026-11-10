@@ -6,17 +6,11 @@ interface TopBarProps {
   activeTab: chrome.tabs.Tab | null
   activeSpace: ArcSpace
   filterQuery: string
-  collapseNativeTabs: boolean
-  isTablessWindow: boolean
-  isChromeless: boolean
   onFilterChange: (q: string) => void
   onOpenCommandBar: () => void
   onNavigateOmnibox: (input: string, newTab: boolean) => Promise<void>
   onCopyCleanUrl: () => void
   onPinActiveTab: () => void
-  onToggleCollapseNativeTabs: () => Promise<void>
-  onToggleTablessWindow: () => Promise<void>
-  onToggleChromelessMode: () => Promise<void>
   onOpenArchive: () => void
 }
 
@@ -24,17 +18,11 @@ export function TopBar({
   activeTab,
   activeSpace,
   filterQuery,
-  collapseNativeTabs,
-  isTablessWindow,
-  isChromeless,
   onFilterChange,
   onOpenCommandBar,
   onNavigateOmnibox,
   onCopyCleanUrl,
   onPinActiveTab,
-  onToggleCollapseNativeTabs,
-  onToggleTablessWindow,
-  onToggleChromelessMode,
   onOpenArchive
 }: TopBarProps) {
   const [isEditingUrl, setIsEditingUrl] = useState(false)
@@ -207,33 +195,6 @@ export function TopBar({
 
         <button
           type="button"
-          className={`icon-btn ${isChromeless ? "is-pinned-active" : ""}`}
-          aria-label="Toggle Arc Chromeless Mode (Hide Chrome Top Bar)"
-          title={
-            isChromeless
-              ? "Exit Arc Chromeless Fullscreen Mode"
-              : "Enter Arc Chromeless Mode (Hides Chrome's Top Tab & URL Bar)"
-          }
-          onClick={onToggleChromelessMode}>
-          <svg
-            aria-hidden="true"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.1"
-            strokeLinecap="round"
-            strokeLinejoin="round">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-            <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-            <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-            <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-          </svg>
-        </button>
-
-        <button
-          type="button"
           className="icon-btn"
           aria-label="Open Archive and Recently Closed Tabs"
           title="Archive & Recently Closed"
@@ -272,34 +233,6 @@ export function TopBar({
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0 2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-        </button>
-      </div>
-
-      {/* Prominent 1-Click Chrome UI Replacement & Hiding Bar */}
-      <div
-        className="chrome-mode-bar"
-        role="group"
-        aria-label="Hide Chrome UI Controls">
-        <button
-          type="button"
-          className={`mode-pill-btn ${collapseNativeTabs ? "is-active" : ""}`}
-          title="Default ON: Represents each Space (🌿 Personal, ⚡ Work, 🔭 Research) as a Native Chrome Tab Group and auto-collapses inactive Spaces in Chrome's top strip"
-          onClick={onToggleCollapseNativeTabs}>
-          <span>{collapseNativeTabs ? "✓" : "○"} Collapse Top Tabs</span>
-        </button>
-        <button
-          type="button"
-          className={`mode-pill-btn ${isTablessWindow ? "is-active" : ""}`}
-          title="Opens a desktop window with NO Chrome horizontal tab strip and NO Chrome URL bar (uses docked left Arc sidebar)"
-          onClick={onToggleTablessWindow}>
-          <span>❐ {isTablessWindow ? "Normal Win" : "Tabless Win"}</span>
-        </button>
-        <button
-          type="button"
-          className={`mode-pill-btn ${isChromeless ? "is-active" : ""}`}
-          title="Toggles edge-to-edge Fullscreen Chromeless Mode with docked left Arc sidebar"
-          onClick={onToggleChromelessMode}>
-          <span>⛶ Fullscreen</span>
         </button>
       </div>
 

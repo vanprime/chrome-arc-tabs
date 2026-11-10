@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
-import { FavoritesGrid } from "~components/FavoritesGrid"
 import { MediaBar } from "~components/MediaBar"
 import { ArchiveDialog } from "~components/modals/ArchiveDialog"
 import { CommandDialog } from "~components/modals/CommandDialog"
@@ -303,26 +302,6 @@ export default function ArcSidePanel() {
     [tabs, activeSpace.id]
   )
 
-  const addItemToFavorites = useCallback(
-    async (title: string, url: string, favIconUrl = "") => {
-      if (!url) return
-      if (arcState.favorites.some((f) => urlsRoughlyMatch(f.url, url))) {
-        showToast("Already in Favorites")
-        return
-      }
-      await updateAndPersistState((draft) => {
-        draft.favorites.push({
-          id: `fav-${Date.now()}`,
-          title: title || formatCleanDomain(url),
-          url,
-          favIconUrl
-        })
-      })
-      showToast("Added to Favorites")
-    },
-    [arcState.favorites, updateAndPersistState, showToast]
-  )
-
   const pinTabToActiveSpace = useCallback(
     async (tab: chrome.tabs.Tab, folderId: string | null = null) => {
       if (!tab.url || !tab.id) return
@@ -464,51 +443,6 @@ export default function ArcSidePanel() {
     }
   }, [tabs, showToast])
 
-  const syncChromeTabGroups = useCallback(async () => {
-    const groups = await chrome.tabGroups.query({
-      windowId: chrome.windows.WINDOW_ID_CURRENT
-    })
-    if (groups.length === 0) {
-      showToast("No Chrome Tab Groups in this window")
-      return
-    }
-    await updateAndPersistState((draft) => {
-      const sp = draft.spaces.find((s) => s.id === activeSpace.id)
-      if (!sp) return
-      for (const grp of groups) {
-        if (grp.title === "Arc") continue
-        const folderName = grp.title || `Group ${grp.id}`
-        let folder = sp.folders.find((f) => f.name === folderName)
-        if (!folder) {
-          folder = {
-            id: `folder-${Date.now()}-${grp.id}`,
-            name: folderName,
-            collapsed: Boolean(grp.collapsed),
-            color: grp.color || "blue"
-          }
-          sp.folders.push(folder)
-        }
-        const groupTabs = tabs.filter((t) => t.groupId === grp.id)
-        for (const t of groupTabs) {
-          const exists = sp.pinnedTabs.some((p) =>
-            urlsRoughlyMatch(p.url, t.url)
-          )
-          if (!exists && t.url && t.id) {
-            sp.pinnedTabs.push({
-              id: `pin-${Date.now()}-${t.id}`,
-              title: t.title || formatCleanDomain(t.url),
-              url: t.url,
-              favIconUrl: t.favIconUrl || "",
-              folderId: folder.id,
-              linkedTabId: t.id
-            })
-          }
-        }
-      }
-    })
-    showToast("Synced Chrome Tab Groups to Folders")
-  }, [activeSpace.id, tabs, updateAndPersistState, showToast])
-
   const importBookmarksBar = useCallback(async () => {
     try {
       const tree = await chrome.bookmarks.getTree()
@@ -597,11 +531,6 @@ export default function ArcSidePanel() {
         activeTab={activeTab}
         activeSpace={activeSpace}
         filterQuery={filterQuery}
-        collapseNativeTabs={Boolean(arcState.collapseNativeTabs)}
-        isTablessWindow={windowType === "popup"}
-        isChromeless={
-          windowState === "fullscreen" || Boolean(arcState.dockedSidebarMode)
-        }
         onFilterChange={setFilterQuery}
         onOpenCommandBar={() => setIsCommandOpen(true)}
         onNavigateOmnibox={async (input, newTab) => {
@@ -635,9 +564,6 @@ export default function ArcSidePanel() {
             await refreshSnapshot()
           }
         }}
-        onToggleCollapseNativeTabs={handleToggleCollapseNativeTabs}
-        onToggleTablessWindow={handleToggleTablessWindow}
-        onToggleChromelessMode={handleToggleChromelessMode}
         onOpenArchive={() => setIsArchiveOpen(true)}
       />
 
@@ -671,11 +597,10 @@ export default function ArcSidePanel() {
           }}
           onSyncNativeGroups={async () => {
             await chrome.runtime.sendMessage({
-              type: "SYNC_SPACE_TAB_GROUPS",
-              materializeMissingSpaces: true
+              type: "SYNC_SPACE_TAB_GROUPS"
             })
             await refreshSnapshot()
-            showToast("Synced all Spaces & Pins as Native Chrome Tab Groups")
+            showToast("Synced Open Tabs with Native Chrome Tab Groups")
           }}
           onOpenCreateSpace={() =>
             setSpaceModalState({ open: true, isNew: true })
@@ -685,33 +610,6 @@ export default function ArcSidePanel() {
           }
           onOpenContextMenu={openCustomContextMenu}
         />
-
-        {arcState.showFavoritesGrid !== false && (
-          <FavoritesGrid
-            favorites={arcState.favorites}
-            tabs={tabs}
-            dragPayload={dragPayload}
-            onDragStartItem={setDragPayload}
-            onActivateOrOpenUrl={(url) => activateOrOpenUrl(url)}
-            onRemoveFavorite={async (id) => {
-              await updateAndPersistState((draft) => {
-                draft.favorites = draft.favorites.filter((f) => f.id !== id)
-              })
-            }}
-            onDropToFavorites={async (payload) => {
-              setDragPayload(null)
-              if (payload.url) {
-                await addItemToFavorites(
-                  payload.title || "",
-                  payload.url,
-                  payload.favIconUrl
-                )
-              }
-            }}
-            onOpenContextMenu={openCustomContextMenu}
-            onCopyCleanUrl={copyTextWithToast}
-          />
-        )}
 
         <PinnedSection
           activeSpace={activeSpace}
@@ -728,7 +626,6 @@ export default function ArcSidePanel() {
           onOpenRenameFolder={(folder) =>
             setFolderModalState({ open: true, folder })
           }
-          onSyncChromeGroups={syncChromeTabGroups}
           onToggleFolderCollapse={async (folderId) => {
             await updateAndPersistState((draft) => {
               const sp = draft.spaces.find((s) => s.id === activeSpace.id)
@@ -793,7 +690,6 @@ export default function ArcSidePanel() {
               if (target) updater(target)
             })
           }}
-          onAddToFavorites={addItemToFavorites}
           onDropIntoFolder={async (folderId, payload) => {
             setDragPayload(null)
             if (payload.kind === "pinned" && payload.pinId) {
@@ -857,7 +753,6 @@ export default function ArcSidePanel() {
           onClearTodayTabs={clearTodayTabs}
           onOpenCommandBar={() => setIsCommandOpen(true)}
           onPinTab={(tab) => pinTabToActiveSpace(tab, null)}
-          onAddToFavorites={addItemToFavorites}
           onCreateSplitPair={async (targetTab) => {
             if (
               !activeTab?.id ||
@@ -945,6 +840,16 @@ export default function ArcSidePanel() {
           Native Chrome Integration &amp; Layout
         </div>
 
+        <label className="setting-row" htmlFor="toggle-collapse-native">
+          <span>Collapse Top Tabs (Auto-Collapse Inactive Space Groups)</span>
+          <input
+            id="toggle-collapse-native"
+            type="checkbox"
+            checked={Boolean(arcState.collapseNativeTabs)}
+            onChange={handleToggleCollapseNativeTabs}
+          />
+        </label>
+
         <button
           type="button"
           className="popover-action-item"
@@ -953,7 +858,7 @@ export default function ArcSidePanel() {
             ❐{" "}
             {windowType === "popup"
               ? "Restore Normal Chrome Window"
-              : "Open Tabless Window (No Chrome Tab/URL Bar)"}
+              : "Tabless Window (Hide Chrome Tab & URL Bar)"}
           </span>
         </button>
 
@@ -964,32 +869,10 @@ export default function ArcSidePanel() {
           <span>
             ⛶{" "}
             {windowState === "fullscreen"
-              ? "Exit Chromeless Fullscreen Mode"
-              : "Enter Arc Chromeless Mode (Hide Native Top Bar)"}
+              ? "Exit Fullscreen Mode"
+              : "Fullscreen Arc Mode (Hide Native Top Bar)"}
           </span>
         </button>
-
-        <label className="setting-row" htmlFor="toggle-collapse-native">
-          <span>Auto-Collapse Inactive Tabs in Chrome Top Strip</span>
-          <input
-            id="toggle-collapse-native"
-            type="checkbox"
-            checked={Boolean(arcState.collapseNativeTabs)}
-            onChange={async (e) => {
-              const enabled = e.target.checked
-              await chrome.runtime.sendMessage({
-                type: "SET_COLLAPSE_NATIVE_TABS",
-                enabled
-              })
-              await refreshSnapshot()
-              showToast(
-                enabled
-                  ? "Collapsed background tabs into [Arc] pill"
-                  : "Ungrouped native Chrome tab strip"
-              )
-            }}
-          />
-        </label>
 
         <label className="setting-row" htmlFor="toggle-docked-sidebar">
           <span>Dock In-Page Left Sidebar on Webpages</span>
@@ -1016,21 +899,6 @@ export default function ArcSidePanel() {
               const checked = e.target.checked
               await updateAndPersistState((draft) => {
                 draft.leftPeekEnabled = checked
-              })
-            }}
-          />
-        </label>
-
-        <label className="setting-row" htmlFor="toggle-show-favorites">
-          <span>Show Suggested Favorites Icons Row</span>
-          <input
-            id="toggle-show-favorites"
-            type="checkbox"
-            checked={arcState.showFavoritesGrid !== false}
-            onChange={async (e) => {
-              const checked = e.target.checked
-              await updateAndPersistState((draft) => {
-                draft.showFavoritesGrid = checked
               })
             }}
           />

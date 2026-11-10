@@ -70,17 +70,58 @@ async function ensureSidePanelBehavior(): Promise<void> {
 }
 
 /**
+ * Clean up any duplicate background tabs with identical URLs (e.g. from earlier sync loops).
+ */
+async function cleanupDuplicateTabs(): Promise<void> {
+  try {
+    const win = await chrome.windows.getLastFocused({ populate: true })
+    if (!win?.tabs) return
+    const seenUrls = new Set<string>()
+    const dupIds: number[] = []
+
+    // First record active and audible tabs so they are never closed
+    for (const t of win.tabs) {
+      if ((t.active || t.audible || t.pinned) && t.url) {
+        seenUrls.add(cleanTrackingUrl(t.url))
+      }
+    }
+
+    for (const t of win.tabs) {
+      if (!t.id || t.active || t.audible || t.pinned) continue
+      const norm = cleanTrackingUrl(t.url || t.pendingUrl || "")
+      if (!norm || norm.startsWith("chrome://newtab")) {
+        if (seenUrls.has("chrome://newtab")) {
+          dupIds.push(t.id)
+        } else {
+          seenUrls.add("chrome://newtab")
+        }
+        continue
+      }
+      if (seenUrls.has(norm)) {
+        dupIds.push(t.id)
+      } else {
+        seenUrls.add(norm)
+      }
+    }
+
+    if (dupIds.length > 0) {
+      await chrome.tabs.remove(dupIds)
+    }
+  } catch {
+    // Ignore if tabs already closed
+  }
+}
+
+/**
  * Bidirectional Native Chrome Tab Group Engine:
  * - Represents every Arc Space (`🌿 Personal`, `⚡ Work`, `🔭 Research`, + user-created Spaces)
  *   as a real native Chrome Tab Group (`chrome.tabGroups`) with matching title, emoji, and color.
- * - Materializes each Space's pinned tabs into its native Chrome Tab Group so that if the user
- *   ever disables or deletes the extension, 100% of their Spaces and tabs remain intact in Chrome!
+ * - Strictly groups existing open tabs without ever auto-spawning background tabs.
  * - When `collapseNativeTabs` is enabled (default), automatically collapses inactive Spaces'
  *   Tab Groups into compact colored pills in Chrome's horizontal tab bar.
  */
 async function syncSpacesWithNativeTabGroups(options?: {
   windowId?: number
-  materializeMissingSpaces?: boolean
 }): Promise<void> {
   if (isSyncingTabGroups) return
   isSyncingTabGroups = true
@@ -101,8 +142,8 @@ async function syncSpacesWithNativeTabGroups(options?: {
       return
     }
 
-    let windowTabs = [...targetWindow.tabs]
-    let groups = await chrome.tabGroups.query({ windowId: targetWindow.id })
+    const windowTabs = [...targetWindow.tabs]
+    const groups = await chrome.tabGroups.query({ windowId: targetWindow.id })
     let stateChanged = false
 
     // 1. Adopt any custom named Chrome Tab Groups created natively by the user in Chrome's top bar
@@ -146,7 +187,7 @@ async function syncSpacesWithNativeTabGroups(options?: {
 
     const activeTab = windowTabs.find((t) => t.active)
 
-    // 2. Ensure every Arc Space is backed by a real Native Chrome Tab Group
+    // 2. Group open tabs into their respective Space's Native Chrome Tab Group
     for (const space of arcState.spaces) {
       const matchedGroup = groups.find((g) => doesGroupMatchSpace(g, space))
 
@@ -195,55 +236,6 @@ async function syncSpacesWithNativeTabGroups(options?: {
           if (arcState.tabSpaceMap[t.id] !== space.id) {
             arcState.tabSpaceMap[t.id] = space.id
             stateChanged = true
-          }
-        }
-      }
-
-      // Materialize missing pinned tabs (or starter tab if Space has 0 open tabs)
-      // so every Space ALWAYS exists as a real Chrome Tab Group in the browser!
-      const shouldMaterialize =
-        spaceTabIds.length === 0 || Boolean(options?.materializeMissingSpaces)
-
-      if (shouldMaterialize) {
-        const unlinkedPins = space.pinnedTabs
-          .filter((p) => !p.linkedTabId && p.url)
-          .slice(0, 6)
-
-        if (unlinkedPins.length > 0) {
-          for (const pin of unlinkedPins) {
-            try {
-              const createdTab = await chrome.tabs.create({
-                windowId: targetWindow.id,
-                url: pin.url,
-                active: false
-              })
-              if (createdTab.id) {
-                pin.linkedTabId = createdTab.id
-                arcState.tabSpaceMap[createdTab.id] = space.id
-                spaceTabIds.push(createdTab.id)
-                windowTabs.push(createdTab)
-                stateChanged = true
-              }
-            } catch {
-              // Ignore invalid URL
-            }
-          }
-        } else if (spaceTabIds.length === 0) {
-          // Brand-new custom Space with 0 pins and 0 open tabs: create a starter tab so its native Tab Group exists immediately
-          try {
-            const starterTab = await chrome.tabs.create({
-              windowId: targetWindow.id,
-              url: "chrome://newtab",
-              active: false
-            })
-            if (starterTab.id) {
-              arcState.tabSpaceMap[starterTab.id] = space.id
-              spaceTabIds.push(starterTab.id)
-              windowTabs.push(starterTab)
-              stateChanged = true
-            }
-          } catch {
-            // Ignore if window closing
           }
         }
       }
@@ -364,6 +356,7 @@ async function toggleTablessWindow(): Promise<{ tablessWindow: boolean }> {
 ;(async () => {
   await ensureSidePanelBehavior()
   await getArcState()
+  await cleanupDuplicateTabs()
   await syncSpacesWithNativeTabGroups()
 })()
 
@@ -371,13 +364,14 @@ chrome.runtime.onInstalled.addListener(async () => {
   await ensureSidePanelBehavior()
   await getArcState()
   await setupContextMenus()
-  await syncSpacesWithNativeTabGroups({ materializeMissingSpaces: true })
+  await cleanupDuplicateTabs()
+  await syncSpacesWithNativeTabGroups()
   await chrome.alarms.create("arc-auto-archive", { periodInMinutes: 15 })
 })
 
 chrome.runtime.onStartup.addListener(async () => {
   await ensureSidePanelBehavior()
-  await syncSpacesWithNativeTabGroups({ materializeMissingSpaces: true })
+  await syncSpacesWithNativeTabGroups()
   await chrome.alarms.create("arc-auto-archive", { periodInMinutes: 15 })
 })
 
@@ -1026,9 +1020,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         case "SYNC_SPACE_TAB_GROUPS": {
-          await syncSpacesWithNativeTabGroups({
-            materializeMissingSpaces: Boolean(message.materializeMissingSpaces)
-          })
+          await syncSpacesWithNativeTabGroups()
           sendResponse({ ok: true })
           break
         }

@@ -27,7 +27,6 @@ interface TodaySectionProps {
   onClearTodayTabs: () => Promise<void>
   onOpenCommandBar: () => void
   onPinTab: (tab: chrome.tabs.Tab) => Promise<void>
-  onAddToFavorites: (title: string, url: string, favIconUrl?: string) => Promise<void>
   onCreateSplitPair: (tab: chrome.tabs.Tab) => Promise<void>
   onUnsplitPair: (pairId: string) => Promise<void>
   onMoveTabToSpace: (tabId: number, spaceId: string) => Promise<void>
@@ -51,7 +50,6 @@ export function TodaySection({
   onClearTodayTabs,
   onOpenCommandBar,
   onPinTab,
-  onAddToFavorites,
   onCreateSplitPair,
   onUnsplitPair,
   onMoveTabToSpace,
@@ -140,18 +138,6 @@ export function TodaySection({
               label: `Pin to ${activeSpace.name}`,
               action: async () => {
                 await onPinTab(tab)
-              }
-            },
-            {
-              label: "Add to Top Favorites",
-              action: async () => {
-                if (tab.url) {
-                  await onAddToFavorites(
-                    tab.title || "",
-                    tab.url,
-                    tab.favIconUrl
-                  )
-                }
               }
             },
             {

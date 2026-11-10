@@ -75,7 +75,7 @@ export function SpacesTopSwitcher({
                     }
                   },
                   {
-                    label: "Sync All Pinned Tabs to Native Chrome Tab Groups",
+                    label: "Sync Open Tabs with Native Chrome Tab Groups",
                     action: async () => {
                       await onSyncNativeGroups()
                     }
