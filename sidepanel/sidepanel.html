@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- MANDATORY: Declare support for both light and dark themes -->
+  <meta name="color-scheme" content="light dark">
+  <title>Arc Vertical Sidebar</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <div id="arc-app" class="arc-shell">
+    <!-- Top Chrome & URL Command Pill -->
+    <header class="arc-topbar">
+      <div class="arc-nav-controls" role="toolbar" aria-label="Browser navigation">
+        <button type="button" id="btn-back" class="icon-btn" aria-label="Go back" title="Back">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <button type="button" id="btn-forward" class="icon-btn" aria-label="Go forward" title="Forward">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18l6-6-6-6"/>
+          </svg>
+        </button>
+        <button type="button" id="btn-reload" class="icon-btn" aria-label="Reload current tab" title="Reload">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+            <path d="M21 3v6h-6"/>
+          </svg>
+        </button>
+        <div class="nav-spacer"></div>
+        <button type="button" id="btn-copy-url" class="icon-btn copy-pill-btn" aria-label="Copy clean URL" title="Copy Clean URL (⌘⇧C)">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </button>
+        <button type="button" id="btn-pin-current" class="icon-btn" aria-label="Pin or unpin active tab" title="Pin/Unpin Current Tab (⌥P)">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="17" x2="12" y2="22"/>
+            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Arc URL / Command Bar Trigger + Inline Filter -->
+      <search class="arc-search-region">
+        <div class="url-bar-row">
+          <button type="button" id="btn-url-pill" class="arc-url-pill" aria-label="Open Arc Command Bar or navigate URL">
+            <svg class="url-lock-icon" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span id="active-domain-label" class="url-domain-text">New Tab</span>
+            <kbd class="shortcut-badge" aria-hidden="true">⌘K</kbd>
+          </button>
+        </div>
+        <div class="inline-filter-row">
+          <svg class="filter-icon" aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="search" id="sidebar-filter-input" class="sidebar-filter-input" placeholder="Filter tabs in sidebar..." aria-label="Filter tabs in sidebar">
+          <button type="button" id="btn-clear-filter" class="filter-clear-btn" hidden aria-label="Clear filter">×</button>
+        </div>
+      </search>
+    </header>
+
+    <!-- Main Scrollable Vertical Sidebar Area -->
+    <main class="arc-main-scroll" id="sidebar-scroll-container">
+      <!-- Favorites Grid (Global across all Spaces) -->
+      <section class="arc-favorites-section" aria-label="Favorites">
+        <div id="favorites-grid" class="favorites-grid" data-drop-zone="favorites"></div>
+      </section>
+
+      <!-- Active Space Header -->
+      <section class="arc-space-header-section" aria-labelledby="active-space-heading">
+        <div class="space-title-row">
+          <button type="button" id="btn-space-Menu" class="space-heading-btn" title="Customize Space Theme & Routing Rules">
+            <span id="active-space-icon" class="space-emoji" aria-hidden="true">🌿</span>
+            <h1 id="active-space-heading" class="space-title-text">Personal</h1>
+          </button>
+          <div class="space-header-actions">
+            <button type="button" id="btn-new-folder" class="mini-action-btn" aria-label="Create folder in Space" title="New Folder">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                <line x1="12" y1="11" x2="12" y2="17"/>
+                <line x1="9" y1="14" x2="15" y2="14"/>
+              </svg>
+            </button>
+            <button type="button" id="btn-sync-groups" class="mini-action-btn" aria-label="Import Chrome Tab Groups into Space folders" title="Sync Chrome Tab Groups">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              </svg>
+            </button>
+            <button type="button" id="btn-edit-space" class="mini-action-btn" aria-label="Customize Space theme and domain routing" title="Space Theme & Domain Rules">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/>
+                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/>
+                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/>
+                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/>
+                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pinned Folders & Pinned Tabs (Per Space) -->
+      <section class="arc-pinned-section" aria-label="Pinned Tabs and Folders" data-drop-zone="pinned-root">
+        <h2 class="sr-only">Pinned Tabs</h2>
+        <div id="pinned-folders-container" class="folders-list"></div>
+        <ul id="pinned-tabs-list" class="tab-list pinned-list"></ul>
+        <div id="pinned-empty-hint" class="pinned-empty-drop" data-drop-zone="pinned-root">
+          <span>Drag tabs here or click 📌 to pin to this Space</span>
+        </div>
+      </section>
+
+      <!-- Iconic Arc Divider + Tidy / Clear Controls -->
+      <div class="arc-divider-bar" role="separator">
+        <div class="divider-left">
+          <span class="divider-label">Today</span>
+          <span id="today-count-badge" class="count-pill">0</span>
+          <button type="button" id="btn-toggle-scope" class="scope-chip" title="Toggle between Space tabs and All window tabs">
+            Space
+          </button>
+        </div>
+        <div class="divider-line"></div>
+        <div class="divider-actions">
+          <button type="button" id="btn-tidy-tabs" class="divider-btn tidy-btn" title="Auto-group Today tabs by domain category">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>
+            </svg>
+            <span>Tidy</span>
+          </button>
+          <button type="button" id="btn-clear-today" class="divider-btn clear-btn" title="Archive and close inactive Today tabs">
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <!-- "+ New Tab" Arc Action Row -->
+      <button type="button" id="btn-new-tab" class="arc-new-tab-btn">
+        <span class="new-tab-plus" aria-hidden="true">+</span>
+        <span class="new-tab-label">New Tab</span>
+        <kbd class="shortcut-badge" aria-hidden="true">⌘T</kbd>
+      </button>
+
+      <!-- Today Unpinned Tabs List -->
+      <section class="arc-today-section" aria-label="Today Open Tabs" data-drop-zone="today">
+        <h2 class="sr-only">Today Tabs</h2>
+        <div id="tidy-groups-container" class="tidy-groups-container"></div>
+        <ul id="today-tabs-list" class="tab-list today-list"></ul>
+      </section>
+    </main>
+
+    <!-- Live Audio Now Playing Bar (Shown when any tab is playing audio) -->
+    <aside id="now-playing-bar" class="arc-media-bar" hidden aria-label="Now playing audio">
+      <div class="media-bar-info" id="media-jump-tab" role="button" tabindex="0" aria-label="Jump to tab playing audio">
+        <img id="media-favicon" class="media-favicon" src="" alt="" width="16" height="16">
+        <div class="media-text">
+          <span id="media-title" class="media-title">Playing Audio</span>
+          <span class="media-subtitle">Click to focus tab</span>
+        </div>
+      </div>
+      <div class="equalizer-bars" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <button type="button" id="btn-media-mute" class="icon-btn media-mute-btn" aria-label="Toggle mute on playing tab">
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+      </button>
+    </aside>
+
+    <!-- Toast Notification Banner inside Sidebar -->
+    <div id="sidebar-toast" class="sidebar-toast" role="status" aria-live="polite" hidden>
+      <span id="sidebar-toast-text"></span>
+    </div>
+
+    <!-- Bottom Space Switcher & Utility Dock -->
+    <footer class="arc-footer">
+      <button type="button" id="btn-open-archive" class="footer-icon-btn" aria-label="Open Archive and Recently Closed Tabs" title="Archive & Recently Closed">
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </button>
+
+      <nav class="spaces-switcher-nav" aria-label="Arc Spaces">
+        <div id="spaces-dock" class="spaces-dock"></div>
+      </nav>
+
+      <div class="footer-right-controls">
+        <button type="button" id="btn-create-space" class="footer-icon-btn" aria-label="Create new Space" title="New Space">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <button type="button" id="btn-settings-popover" popovertarget="settings-popover" class="footer-icon-btn" aria-label="Arc Sidebar Settings" title="Settings & Auto-Archive">
+          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Non-Modal Popover: Quick Settings & Utilities -->
+  <div id="settings-popover" class="arc-popover settings-menu" popover="auto">
+    <div class="popover-section-title">Arc Sidebar Settings</div>
+    <label class="setting-row" for="select-auto-archive">
+      <span>Auto-Archive Inactive Tabs</span>
+      <select id="select-auto-archive" class="arc-select">
+        <option value="12">12 Hours (Arc)</option>
+        <option value="24">24 Hours</option>
+        <option value="72">3 Days</option>
+        <option value="0">Never</option>
+      </select>
+    </label>
+    <label class="setting-row" for="toggle-all-tabs">
+      <span>Show All Window Tabs in Today</span>
+      <input type="checkbox" id="toggle-all-tabs">
+    </label>
+    <label class="setting-row" for="toggle-left-peek">
+      <span>In-Page Left-Edge Peek Handle</span>
+      <input type="checkbox" id="toggle-left-peek" checked>
+    </label>
+    <hr class="popover-hr">
+    <button type="button" id="btn-suspend-inactive" class="popover-action-item">
+      <span>💤 Suspend Inactive Tabs (Save Memory)</span>
+    </button>
+    <button type="button" id="btn-close-duplicates" class="popover-action-item">
+      <span>🧹 Close Duplicate Tabs</span>
+    </button>
+    <button type="button" id="btn-import-bookmarks" class="popover-action-item">
+      <span>🔖 Import Bookmarks Bar to Folder</span>
+    </button>
+    <div class="popover-tip">
+      <strong>Tip:</strong> Set Chrome's Side Panel position to <em>Left</em> in <code>Chrome Settings → Appearance → Side panel</code> for the native left-hand Arc layout.
+    </div>
+  </div>
+
+  <!-- Contextual Right-Click Action Menu (Popover) -->
+  <div id="context-menu-popover" class="arc-popover context-menu" popover="auto">
+    <div id="context-menu-items" class="context-menu-list"></div>
+  </div>
+
+  <!-- Modal 1: Arc Command Bar (⌘K / New Tab / Omni-Search) -->
+  <dialog id="command-dialog" class="arc-modal command-modal" closedby="any" aria-labelledby="command-dialog-title">
+    <div class="modal-inner">
+      <div class="command-header">
+        <h2 id="command-dialog-title" class="sr-only">Arc Command Bar</h2>
+        <svg class="cmd-search-icon" aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="command-input" class="command-input" placeholder="Search tabs, pinned, or enter URL / query..." autocomplete="off" autofocus>
+        <button type="button" id="btn-close-command" class="modal-close-btn" aria-label="Close Command Bar">Esc</button>
+      </div>
+      <ul id="command-results" class="command-results-list" role="listbox" aria-label="Command suggestions"></ul>
+    </div>
+  </dialog>
+
+  <!-- Modal 2: Space Theme & Domain Routing Studio -->
+  <dialog id="space-dialog" class="arc-modal" closedby="any" aria-labelledby="space-dialog-title">
+    <form method="dialog" id="space-form" class="modal-form">
+      <div class="modal-title-bar">
+        <h2 id="space-dialog-title">Customize Space</h2>
+        <button type="submit" value="cancel" class="modal-close-btn" aria-label="Close Space Customization">×</button>
+      </div>
+
+      <div class="form-grid">
+        <div class="form-row-split">
+          <label class="form-field" for="space-icon-input">
+            <span>Icon</span>
+            <input type="text" id="space-icon-input" maxlength="4" class="arc-input icon-input" required>
+          </label>
+          <label class="form-field flex-1" for="space-name-input">
+            <span>Space Name</span>
+            <input type="text" id="space-name-input" maxlength="32" class="arc-input" required autofocus>
+          </label>
+        </div>
+
+        <div class="form-field">
+          <span>Arc Atmospheric Theme Preset</span>
+          <div class="theme-presets-row" id="theme-presets-row">
+            <button type="button" class="theme-swatch" data-hue="256" data-accent="318" data-sat="74" style="--sw-h1: 256; --sw-h2: 318;" aria-label="Aurora Purple"></button>
+            <button type="button" class="theme-swatch" data-hue="214" data-accent="182" data-sat="78" style="--sw-h1: 214; --sw-h2: 182;" aria-label="Ocean Cyan"></button>
+            <button type="button" class="theme-swatch" data-hue="24" data-accent="342" data-sat="82" style="--sw-h1: 24; --sw-h2: 342;" aria-label="Sunset Coral"></button>
+            <button type="button" class="theme-swatch" data-hue="152" data-accent="190" data-sat="70" style="--sw-h1: 152; --sw-h2: 190;" aria-label="Forest Emerald"></button>
+            <button type="button" class="theme-swatch" data-hue="335" data-accent="285" data-sat="76" style="--sw-h1: 335; --sw-h2: 285;" aria-label="Berry Rose"></button>
+            <button type="button" class="theme-swatch" data-hue="220" data-accent="240" data-sat="18" style="--sw-h1: 220; --sw-h2: 240;" aria-label="Monochrome Slate"></button>
+          </div>
+        </div>
+
+        <label class="form-field" for="space-hue-slider">
+          <span>Primary Tint Hue (<output id="space-hue-output">256</output>°)</span>
+          <input type="range" id="space-hue-slider" min="0" max="360" value="256">
+        </label>
+
+        <label class="form-field" for="space-accent-slider">
+          <span>Secondary Mesh Hue (<output id="space-accent-output">318</output>°)</span>
+          <input type="range" id="space-accent-slider" min="0" max="360" value="318">
+        </label>
+
+        <label class="form-field" for="space-domains-input">
+          <span>Auto-Route Domains (comma-separated)</span>
+          <input type="text" id="space-domains-input" class="arc-input" placeholder="e.g. github.com, linear.app, figma.com">
+          <small class="field-hint">Tabs matching these domains automatically route to this Space.</small>
+        </label>
+      </div>
+
+      <div class="modal-footer-actions">
+        <button type="button" id="btn-delete-space" class="btn-danger">Delete Space</button>
+        <div class="spacer"></div>
+        <button type="submit" value="cancel" class="btn-secondary">Cancel</button>
+        <button type="submit" value="save" class="btn-primary">Save Space</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal 3: Archive & Recently Closed Drawer -->
+  <dialog id="archive-dialog" class="arc-modal" closedby="any" aria-labelledby="archive-dialog-title">
+    <div class="modal-inner">
+      <div class="modal-title-bar">
+        <h2 id="archive-dialog-title">Archive &amp; Recently Closed</h2>
+        <div class="archive-header-actions">
+          <button type="button" id="btn-clear-archive" class="btn-text-subtle">Clear Archive</button>
+          <button type="button" id="btn-close-archive" class="modal-close-btn" aria-label="Close Archive">×</button>
+        </div>
+      </div>
+      <div class="archive-search-box">
+        <input type="search" id="archive-filter-input" class="arc-input" placeholder="Search archived or recently closed tabs..." aria-label="Search archived tabs" autofocus>
+      </div>
+      <ul id="archive-list" class="archive-list"></ul>
+    </div>
+  </dialog>
+
+  <!-- Modal 4: Folder Create / Rename Dialog -->
+  <dialog id="folder-dialog" class="arc-modal" closedby="any" aria-labelledby="folder-dialog-title">
+    <form method="dialog" id="folder-form" class="modal-form">
+      <div class="modal-title-bar">
+        <h2 id="folder-dialog-title">Folder</h2>
+        <button type="submit" value="cancel" class="modal-close-btn" aria-label="Close Folder Dialog">×</button>
+      </div>
+      <div class="form-grid">
+        <label class="form-field" for="folder-name-input">
+          <span>Folder Name</span>
+          <input type="text" id="folder-name-input" class="arc-input" placeholder="e.g. Design System, PRs, Reading" required autofocus>
+        </label>
+      </div>
+      <div class="modal-footer-actions">
+        <div class="spacer"></div>
+        <button type="submit" value="cancel" class="btn-secondary">Cancel</button>
+        <button type="submit" value="save" class="btn-primary">Save Folder</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

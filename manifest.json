@@ -1,0 +1,74 @@
+{
+  "manifest_version": 3,
+  "name": "Arc Vertical Sidebar",
+  "version": "1.0.0",
+  "description": "Brings Arc's Vertical Sidebar to Chrome with Spaces, Favorites, Pinned Tabs, Folders, Command Bar, Auto-Archive, and Split View.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Open Arc Vertical Sidebar",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "sidePanel",
+    "tabs",
+    "tabGroups",
+    "storage",
+    "favicon",
+    "sessions",
+    "bookmarks",
+    "contextMenus",
+    "alarms"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "js": ["content/arc-overlay.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Toggle Arc Vertical Sidebar"
+    },
+    "open-command-bar": {
+      "suggested_key": {
+        "default": "Alt+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "Open Arc Command Bar"
+    },
+    "pin-current-tab": {
+      "suggested_key": {
+        "default": "Alt+P",
+        "mac": "Alt+P"
+      },
+      "description": "Pin or Unpin Current Tab in Active Space"
+    },
+    "copy-current-url": {
+      "suggested_key": {
+        "default": "Alt+C",
+        "mac": "Command+Shift+C"
+      },
+      "description": "Copy Current Tab Clean URL (Arc Style)"
+    }
+  }
+}
