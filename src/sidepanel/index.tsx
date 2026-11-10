@@ -6,7 +6,7 @@ import { CommandDialog } from "~components/modals/CommandDialog"
 import { FolderDialog } from "~components/modals/FolderDialog"
 import { SpaceDialog } from "~components/modals/SpaceDialog"
 import { PinnedSection } from "~components/PinnedSection"
-import { SpacesFooter } from "~components/SpacesFooter"
+import { SpacesTopSwitcher } from "~components/SpacesTopSwitcher"
 import { TodaySection } from "~components/TodaySection"
 import { TopBar } from "~components/TopBar"
 import { DEFAULT_ARC_STATE, saveArcState } from "~lib/storage"
@@ -17,7 +17,6 @@ import {
 } from "~lib/url-utils"
 import type {
   ArcFolder,
-  ArcPinnedTab,
   ArcSpace,
   ArcState,
   ArcTheme,
@@ -30,6 +29,7 @@ import "./style.css"
 export default function ArcSidePanel() {
   const [arcState, setArcState] = useState<ArcState>(DEFAULT_ARC_STATE)
   const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([])
+  const [windowState, setWindowState] = useState<string>("normal")
   const [filterQuery, setFilterQuery] = useState("")
   const [tidyGroupedMode, setTidyGroupedMode] = useState(false)
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null)
@@ -77,7 +77,6 @@ export default function ArcSidePanel() {
     root.style.setProperty("--space-sat", `${sat}%`)
   }, [])
 
-  // Ensure <meta name="color-scheme" content="light dark"> exists in head
   useEffect(() => {
     if (!document.querySelector('meta[name="color-scheme"]')) {
       const meta = document.createElement("meta")
@@ -88,7 +87,11 @@ export default function ArcSidePanel() {
   }, [])
 
   const reconcileAndSetSnapshot = useCallback(
-    (nextArcState: ArcState, nextTabs: chrome.tabs.Tab[]) => {
+    (
+      nextArcState: ArcState,
+      nextTabs: chrome.tabs.Tab[],
+      nextWinState = "normal"
+    ) => {
       const cloned = structuredClone(nextArcState)
       const openTabMap = new Map(nextTabs.map((t) => [t.id, t]))
 
@@ -108,6 +111,7 @@ export default function ArcSidePanel() {
 
       setArcState(cloned)
       setTabs(nextTabs)
+      setWindowState(nextWinState)
     },
     []
   )
@@ -118,7 +122,11 @@ export default function ArcSidePanel() {
         type: "GET_ARC_SNAPSHOT"
       })
       if (response?.ok) {
-        reconcileAndSetSnapshot(response.arcState, response.tabs || [])
+        reconcileAndSetSnapshot(
+          response.arcState,
+          response.tabs || [],
+          response.windowState || "normal"
+        )
       } else {
         const stored = await chrome.storage.local.get("arcState")
         const queriedTabs = await chrome.tabs.query({ currentWindow: true })
@@ -167,7 +175,6 @@ export default function ArcSidePanel() {
     [showToast]
   )
 
-  // Real-time listeners for tabs, storage, and keyboard commands
   useEffect(() => {
     refreshSnapshot()
 
@@ -227,7 +234,6 @@ export default function ArcSidePanel() {
     }
   }, [refreshSnapshot, copyTextWithToast])
 
-  // Keyboard shortcuts inside Side Panel
   useEffect(() => {
     const onKeyDown = async (e: KeyboardEvent) => {
       if (
@@ -341,7 +347,6 @@ export default function ArcSidePanel() {
     [activeSpace, updateAndPersistState, showToast]
   )
 
-  // Compute Today Tabs for active Space
   const linkedTabIds = new Set<number>()
   for (const sp of arcState.spaces) {
     for (const p of sp.pinnedTabs) {
@@ -451,6 +456,7 @@ export default function ArcSidePanel() {
       const sp = draft.spaces.find((s) => s.id === activeSpace.id)
       if (!sp) return
       for (const grp of groups) {
+        if (grp.title === "Arc") continue
         const folderName = grp.title || `Group ${grp.id}`
         let folder = sp.folders.find((f) => f.name === folderName)
         if (!folder) {
@@ -480,9 +486,7 @@ export default function ArcSidePanel() {
         }
       }
     })
-    showToast(
-      `Synced ${groups.length} Chrome Tab Group${groups.length > 1 ? "s" : ""}`
-    )
+    showToast("Synced Chrome Tab Groups to Folders")
   }, [activeSpace.id, tabs, updateAndPersistState, showToast])
 
   const importBookmarksBar = useCallback(async () => {
@@ -525,14 +529,39 @@ export default function ArcSidePanel() {
     }
   }, [activeSpace.id, updateAndPersistState, showToast])
 
+  const handleToggleChromelessMode = useCallback(async () => {
+    const res = await chrome.runtime.sendMessage({
+      type: "TOGGLE_CHROMELESS_MODE"
+    })
+    if (res?.ok) {
+      await refreshSnapshot()
+      showToast(
+        res.chromeless
+          ? "Entered Arc Chromeless Mode (Native Top Bar Hidden)"
+          : "Exited Arc Chromeless Mode"
+      )
+    }
+  }, [refreshSnapshot, showToast])
+
   return (
     <div className="arc-shell">
       <TopBar
         activeTab={activeTab}
         activeSpace={activeSpace}
         filterQuery={filterQuery}
+        isChromeless={
+          windowState === "fullscreen" || Boolean(arcState.dockedSidebarMode)
+        }
         onFilterChange={setFilterQuery}
         onOpenCommandBar={() => setIsCommandOpen(true)}
+        onNavigateOmnibox={async (input, newTab) => {
+          await chrome.runtime.sendMessage({
+            type: "NAVIGATE_ACTIVE_TAB",
+            input,
+            newTab
+          })
+          await refreshSnapshot()
+        }}
         onCopyCleanUrl={async () => {
           if (activeTab?.url) {
             const clean = cleanTrackingUrl(activeTab.url)
@@ -556,33 +585,66 @@ export default function ArcSidePanel() {
             await refreshSnapshot()
           }
         }}
+        onToggleChromelessMode={handleToggleChromelessMode}
+        onOpenArchive={() => setIsArchiveOpen(true)}
       />
 
       <main className="arc-main-scroll">
-        <FavoritesGrid
-          favorites={arcState.favorites}
-          tabs={tabs}
+        {/* Top Large-Icon Spaces Switcher (Personal, Work, Research) */}
+        <SpacesTopSwitcher
+          spaces={arcState.spaces}
+          activeSpace={activeSpace}
           dragPayload={dragPayload}
-          onDragStartItem={setDragPayload}
-          onActivateOrOpenUrl={(url) => activateOrOpenUrl(url)}
-          onRemoveFavorite={async (id) => {
+          onSwitchSpace={async (spaceId) => {
             await updateAndPersistState((draft) => {
-              draft.favorites = draft.favorites.filter((f) => f.id !== id)
+              draft.activeSpaceId = spaceId
             })
           }}
-          onDropToFavorites={async (payload) => {
+          onMoveTabToSpace={async (tabId, spaceId) => {
             setDragPayload(null)
-            if (payload.url) {
-              await addItemToFavorites(
-                payload.title || "",
-                payload.url,
-                payload.favIconUrl
-              )
+            const target = arcState.spaces.find((s) => s.id === spaceId)
+            await updateAndPersistState((draft) => {
+              draft.tabSpaceMap[tabId] = spaceId
+            })
+            if (target) {
+              showToast(`Moved tab to ${target.name}`)
             }
           }}
+          onOpenCreateSpace={() =>
+            setSpaceModalState({ open: true, isNew: true })
+          }
+          onOpenEditSpace={() =>
+            setSpaceModalState({ open: true, isNew: false })
+          }
           onOpenContextMenu={openCustomContextMenu}
-          onCopyCleanUrl={copyTextWithToast}
         />
+
+        {arcState.showFavoritesGrid !== false && (
+          <FavoritesGrid
+            favorites={arcState.favorites}
+            tabs={tabs}
+            dragPayload={dragPayload}
+            onDragStartItem={setDragPayload}
+            onActivateOrOpenUrl={(url) => activateOrOpenUrl(url)}
+            onRemoveFavorite={async (id) => {
+              await updateAndPersistState((draft) => {
+                draft.favorites = draft.favorites.filter((f) => f.id !== id)
+              })
+            }}
+            onDropToFavorites={async (payload) => {
+              setDragPayload(null)
+              if (payload.url) {
+                await addItemToFavorites(
+                  payload.title || "",
+                  payload.url,
+                  payload.favIconUrl
+                )
+              }
+            }}
+            onOpenContextMenu={openCustomContextMenu}
+            onCopyCleanUrl={copyTextWithToast}
+          />
+        )}
 
         <PinnedSection
           activeSpace={activeSpace}
@@ -801,37 +863,94 @@ export default function ArcSidePanel() {
         </div>
       )}
 
-      <SpacesFooter
-        spaces={arcState.spaces}
-        activeSpace={activeSpace}
-        dragPayload={dragPayload}
-        onSwitchSpace={async (spaceId) => {
-          await updateAndPersistState((draft) => {
-            draft.activeSpaceId = spaceId
-          })
-        }}
-        onMoveTabToSpace={async (tabId, spaceId) => {
-          setDragPayload(null)
-          const target = arcState.spaces.find((s) => s.id === spaceId)
-          await updateAndPersistState((draft) => {
-            draft.tabSpaceMap[tabId] = spaceId
-          })
-          if (target) {
-            showToast(`Moved tab to ${target.name}`)
-          }
-        }}
-        onOpenArchive={() => setIsArchiveOpen(true)}
-        onOpenCreateSpace={() =>
-          setSpaceModalState({ open: true, isNew: true })
-        }
-      />
-
-      {/* Non-Modal Popover: Quick Settings & Utilities */}
+      {/* Non-Modal Popover: Quick Settings & Native Chrome Integration */}
       <div
         id="settings-popover"
         className="arc-popover settings-menu"
         {...({ popover: "auto" } as any)}>
-        <div className="popover-section-title">Arc Sidebar Settings</div>
+        <div className="popover-section-title">
+          Native Chrome Integration &amp; Layout
+        </div>
+
+        <button
+          type="button"
+          className="popover-action-item"
+          onClick={handleToggleChromelessMode}>
+          <span>
+            ⛶{" "}
+            {windowState === "fullscreen"
+              ? "Exit Chromeless Fullscreen Mode"
+              : "Enter Arc Chromeless Mode (Hide Native Top Bar)"}
+          </span>
+        </button>
+
+        <label className="setting-row" htmlFor="toggle-collapse-native">
+          <span>Auto-Collapse Inactive Tabs in Chrome Top Strip</span>
+          <input
+            id="toggle-collapse-native"
+            type="checkbox"
+            checked={Boolean(arcState.collapseNativeTabs)}
+            onChange={async (e) => {
+              const enabled = e.target.checked
+              await chrome.runtime.sendMessage({
+                type: "SET_COLLAPSE_NATIVE_TABS",
+                enabled
+              })
+              await refreshSnapshot()
+              showToast(
+                enabled
+                  ? "Collapsed background tabs into [Arc] pill"
+                  : "Ungrouped native Chrome tab strip"
+              )
+            }}
+          />
+        </label>
+
+        <label className="setting-row" htmlFor="toggle-docked-sidebar">
+          <span>Dock In-Page Left Sidebar on Webpages</span>
+          <input
+            id="toggle-docked-sidebar"
+            type="checkbox"
+            checked={Boolean(arcState.dockedSidebarMode)}
+            onChange={async (e) => {
+              const checked = e.target.checked
+              await updateAndPersistState((draft) => {
+                draft.dockedSidebarMode = checked
+              })
+            }}
+          />
+        </label>
+
+        <label className="setting-row" htmlFor="toggle-left-peek">
+          <span>In-Page Left-Edge Hover Peek</span>
+          <input
+            id="toggle-left-peek"
+            type="checkbox"
+            checked={arcState.leftPeekEnabled !== false}
+            onChange={async (e) => {
+              const checked = e.target.checked
+              await updateAndPersistState((draft) => {
+                draft.leftPeekEnabled = checked
+              })
+            }}
+          />
+        </label>
+
+        <label className="setting-row" htmlFor="toggle-show-favorites">
+          <span>Show Suggested Favorites Icons Row</span>
+          <input
+            id="toggle-show-favorites"
+            type="checkbox"
+            checked={arcState.showFavoritesGrid !== false}
+            onChange={async (e) => {
+              const checked = e.target.checked
+              await updateAndPersistState((draft) => {
+                draft.showFavoritesGrid = checked
+              })
+            }}
+          />
+        </label>
+
         <label className="setting-row" htmlFor="select-auto-archive">
           <span>Auto-Archive Inactive Tabs</span>
           <select
@@ -856,36 +975,6 @@ export default function ArcSidePanel() {
           </select>
         </label>
 
-        <label className="setting-row" htmlFor="toggle-all-tabs">
-          <span>Show All Window Tabs in Today</span>
-          <input
-            id="toggle-all-tabs"
-            type="checkbox"
-            checked={Boolean(arcState.viewAllSpacesTabs)}
-            onChange={async (e) => {
-              const checked = e.target.checked
-              await updateAndPersistState((draft) => {
-                draft.viewAllSpacesTabs = checked
-              })
-            }}
-          />
-        </label>
-
-        <label className="setting-row" htmlFor="toggle-left-peek">
-          <span>In-Page Left-Edge Peek Handle</span>
-          <input
-            id="toggle-left-peek"
-            type="checkbox"
-            checked={arcState.leftPeekEnabled !== false}
-            onChange={async (e) => {
-              const checked = e.target.checked
-              await updateAndPersistState((draft) => {
-                draft.leftPeekEnabled = checked
-              })
-            }}
-          />
-        </label>
-
         <hr className="popover-hr" />
 
         <button
@@ -906,13 +995,6 @@ export default function ArcSidePanel() {
           onClick={importBookmarksBar}>
           <span>🔖 Import Bookmarks Bar to Folder</span>
         </button>
-
-        <div className="popover-tip">
-          <strong>Tip:</strong> Set Chrome&apos;s Side Panel position to{" "}
-          <em>Left</em> in{" "}
-          <code>Chrome Settings → Appearance → Side panel</code> for the native
-          left-hand Arc layout.
-        </div>
       </div>
 
       {/* Contextual Right-Click Action Menu (Popover) */}

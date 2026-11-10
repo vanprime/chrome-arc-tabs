@@ -5,6 +5,9 @@ export const DEFAULT_ARC_STATE: ArcState = {
   viewAllSpacesTabs: false,
   autoArchiveHours: 12,
   leftPeekEnabled: true,
+  dockedSidebarMode: false,
+  collapseNativeTabs: false,
+  showFavoritesGrid: true,
   favorites: [
     {
       id: "fav-github",

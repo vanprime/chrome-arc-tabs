@@ -36,6 +36,11 @@ async function setupContextMenus(): Promise<void> {
       title: "Copy Clean URL (Arc Style)",
       contexts: ["page", "link"]
     })
+    chrome.contextMenus.create({
+      id: "arc-toggle-chromeless",
+      title: "Toggle Arc Chromeless Mode (Hide Native Chrome Bar)",
+      contexts: ["page"]
+    })
   } catch (err) {
     console.error("Context menu setup error:", err)
   }
@@ -46,6 +51,96 @@ async function ensureSidePanelBehavior(): Promise<void> {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
   } catch (err) {
     console.error("Error setting panel behavior:", err)
+  }
+}
+
+/**
+ * When `collapseNativeTabs` is enabled, collapses all inactive unpinned tabs
+ * in the window into a single compact "Arc" Chrome Tab Group so the native
+ * horizontal tab bar only shows the active tab + a tiny [Arc] pill.
+ */
+async function syncCollapsedNativeTabStrip(windowId?: number): Promise<void> {
+  try {
+    const arcState = await getArcState()
+    const targetWindow = windowId
+      ? await chrome.windows.get(windowId, { populate: true })
+      : await chrome.windows.getLastFocused({ populate: true })
+    if (!targetWindow?.id || !targetWindow.tabs) return
+
+    const groups = await chrome.tabGroups.query({ windowId: targetWindow.id })
+    const arcGroup = groups.find((g) => g.title === "Arc")
+
+    if (!arcState.collapseNativeTabs) {
+      if (arcGroup) {
+        const groupedTabs = targetWindow.tabs
+          .filter((t) => t.groupId === arcGroup.id && typeof t.id === "number")
+          .map((t) => t.id as number)
+        if (groupedTabs.length > 0) {
+          await chrome.tabs.ungroup(groupedTabs)
+        }
+      }
+      return
+    }
+
+    const activeTab = targetWindow.tabs.find((t) => t.active)
+    if (activeTab?.id && activeTab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+      if (!arcGroup || activeTab.groupId === arcGroup.id) {
+        try {
+          await chrome.tabs.ungroup(activeTab.id)
+        } catch {
+          // Ignore if tab is being dragged
+        }
+      }
+    }
+
+    const backgroundTabIds = targetWindow.tabs
+      .filter(
+        (t) =>
+          typeof t.id === "number" &&
+          !t.active &&
+          !t.pinned &&
+          (t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE ||
+            (arcGroup && t.groupId === arcGroup.id))
+      )
+      .map((t) => t.id as number)
+
+    if (backgroundTabIds.length === 0) return
+
+    const groupId = await chrome.tabs.group({
+      tabIds: backgroundTabIds,
+      ...(arcGroup ? { groupId: arcGroup.id } : {})
+    })
+    await chrome.tabGroups.update(groupId, {
+      title: "Arc",
+      color: "purple",
+      collapsed: true
+    })
+  } catch {
+    // Tab strip may be in middle of user drag operation
+  }
+}
+
+async function toggleChromelessMode(forceState?: boolean): Promise<{
+  chromeless: boolean
+  dockedSidebarMode: boolean
+}> {
+  const arcState = await getArcState()
+  const win = await chrome.windows.getLastFocused()
+  const isCurrentlyFullscreen = win?.state === "fullscreen"
+  const nextChromeless =
+    typeof forceState === "boolean" ? forceState : !isCurrentlyFullscreen
+
+  if (win?.id) {
+    await chrome.windows.update(win.id, {
+      state: nextChromeless ? "fullscreen" : "normal"
+    })
+  }
+
+  arcState.dockedSidebarMode = nextChromeless
+  await saveArcState(arcState)
+  return {
+    chromeless: nextChromeless,
+    dockedSidebarMode: arcState.dockedSidebarMode
   }
 }
 
@@ -83,12 +178,13 @@ chrome.tabs.onCreated.addListener(async (tab) => {
     arcState.tabSpaceMap[tab.id] = targetSpaceId
     arcState.tabLastActive[tab.id] = Date.now()
     await saveArcState(arcState)
+    await syncCollapsedNativeTabStrip(tab.windowId)
   } catch (err) {
     console.error("Error handling tab creation:", err)
   }
 })
 
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   try {
     const arcState = await getArcState()
     arcState.tabLastActive[tabId] = Date.now()
@@ -96,6 +192,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
       arcState.tabSpaceMap[tabId] = arcState.activeSpaceId
     }
     await saveArcState(arcState)
+    await syncCollapsedNativeTabStrip(windowId)
   } catch (err) {
     console.error("Error tracking tab activation:", err)
   }
@@ -289,6 +386,21 @@ async function sendToastToTab(
   }
 }
 
+function resolveInputToUrl(rawInput: string): string {
+  const q = rawInput.trim()
+  if (!q) return "chrome://newtab"
+  if (/^(https?:\/\/|chrome:\/\/|file:\/\/|about:)/i.test(q)) {
+    return q
+  }
+  const looksLikeDomain = /^(localhost(:\d+)?|[\w-]+\.[a-z]{2,})(\/.*)?$/i.test(
+    q
+  )
+  if (looksLikeDomain && !q.includes(" ")) {
+    return `https://${q}`
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   try {
     if (info.menuItemId === "arc-pin-page" && tab) {
@@ -358,6 +470,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
           subtitle: cleanUrl
         })
       }
+    } else if (info.menuItemId === "arc-toggle-chromeless") {
+      await toggleChromelessMode()
     }
   } catch (err) {
     console.error("Context menu handler error:", err)
@@ -441,7 +555,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           } catch {
             groups = []
           }
-          sendResponse({ ok: true, arcState, tabs, groups })
+          sendResponse({
+            ok: true,
+            arcState,
+            tabs,
+            groups,
+            windowState: currentWindow?.state || "normal"
+          })
           break
         }
 
@@ -462,8 +582,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
         case "CREATE_TAB": {
           const arcState = await getArcState()
+          const targetUrl = message.rawQuery
+            ? resolveInputToUrl(message.rawQuery)
+            : message.url || "chrome://newtab"
           const newTab = await chrome.tabs.create({
-            url: message.url || "chrome://newtab",
+            url: targetUrl,
             active: message.active !== false
           })
           if (newTab?.id) {
@@ -473,6 +596,64 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             await saveArcState(arcState)
           }
           sendResponse({ ok: true, tab: newTab })
+          break
+        }
+
+        case "NAVIGATE_ACTIVE_TAB": {
+          const [activeTab] = await chrome.tabs.query({
+            active: true,
+            currentWindow: true
+          })
+          const targetUrl = resolveInputToUrl(
+            message.input || message.url || ""
+          )
+          if (activeTab?.id && !message.newTab) {
+            await chrome.tabs.update(activeTab.id, { url: targetUrl })
+          } else {
+            await chrome.tabs.create({ url: targetUrl, active: true })
+          }
+          sendResponse({ ok: true, url: targetUrl })
+          break
+        }
+
+        case "BROWSER_NAV_ACTION": {
+          const [activeTab] = await chrome.tabs.query({
+            active: true,
+            currentWindow: true
+          })
+          if (activeTab?.id) {
+            if (message.action === "back") {
+              try {
+                await chrome.tabs.goBack(activeTab.id)
+              } catch {
+                // Already at start of history
+              }
+            } else if (message.action === "forward") {
+              try {
+                await chrome.tabs.goForward(activeTab.id)
+              } catch {
+                // Already at end of history
+              }
+            } else if (message.action === "reload") {
+              await chrome.tabs.reload(activeTab.id)
+            }
+          }
+          sendResponse({ ok: true })
+          break
+        }
+
+        case "TOGGLE_CHROMELESS_MODE": {
+          const res = await toggleChromelessMode(message.forceState)
+          sendResponse({ ok: true, ...res })
+          break
+        }
+
+        case "SET_COLLAPSE_NATIVE_TABS": {
+          const arcState = await getArcState()
+          arcState.collapseNativeTabs = Boolean(message.enabled)
+          await saveArcState(arcState)
+          await syncCollapsedNativeTabStrip()
+          sendResponse({ ok: true, collapseNativeTabs: arcState.collapseNativeTabs })
           break
         }
 

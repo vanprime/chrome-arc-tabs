@@ -1,6 +1,6 @@
 # Arc Vertical Sidebar for Chrome (Plasmo + React + TypeScript)
 
-A native Manifest V3 Chrome Extension built with **[Plasmo](https://docs.plasmo.com/)**, **React 18**, and **TypeScript** that brings **Arc Browser's Vertical Sidebar** workflow to Google Chrome — complete with **Spaces**, **Atmospheric Mesh Themes**, **Top Favorites Tiles**, **Persistent Pinned Tabs & Folders**, **Today Tabs with Smart Tidy & Auto-Archive**, **Split View Pairing**, **Live Audio Controller**, **Command Bar (`⌘K`)**, and an **In-Page Left-Edge Peek Sidebar**.
+A native Manifest V3 Chrome Extension built with **[Plasmo](https://docs.plasmo.com/)**, **React 18**, and **TypeScript** that brings **Arc Browser's Vertical Sidebar** workflow to Google Chrome — complete with **Top Large-Icon Spaces (`Personal`, `Work`, `Research`)**, **Inline Editable Omnibox Navigation**, **Arc Chromeless Mode (Hides Native Top Bar)**, **Auto-Collapsing Native Chrome Tab Strip**, **Persistent Pinned Tabs & Folders**, **Today Tabs with Smart Tidy & Auto-Archive**, **Split View Pairing**, **Live Audio Controller**, and **Command Bar (`⌘K`)**.
 
 ---
 
@@ -32,21 +32,17 @@ pnpm typecheck
 4. **Dock the Side Panel on the Left (Arc Layout)**:
    - Open `chrome://settings/appearance` in Chrome.
    - Under **Side panel**, select **Show on left side**.
-5. Click the **Arc Vertical Sidebar** extension icon in the toolbar (or press `⌘⇧S` on macOS / `Alt+S` on Windows & Linux) to open the sidebar.
 
 ---
 
-## Project Architecture (`src/`)
+## Replacing Chrome's Native Tabs & Navigation
 
-- `src/background/index.ts` — Stateless Manifest V3 Service Worker (`chrome.sidePanel.setPanelBehavior`, tab-to-Space domain routing, context menus, `chrome.alarms` auto-archive, and message hub).
-- `src/sidepanel/index.tsx` & `src/sidepanel/style.css` — Main Side Panel React entrypoint and CSS Cascade Layer (`@layer`) design system.
-- `src/contents/arc-overlay.tsx` — Plasmo Content Script UI (CSUI) rendered inside an isolated Shadow DOM for the in-page **Left-Edge Hover Peek Sidebar**, **In-Page Command Bar (`⌘⇧K`)**, and **Arc Toast Notifications**.
-- `src/components/` — Modular React components:
-  - `TopBar.tsx` — Navigation toolbar, Pin/Copy actions, `⌘K` URL Pill, and inline `<search>` tab filter.
-  - `FavoritesGrid.tsx` — Top 4-column squircle Favorites grid with drag-and-drop and live indicators.
-  - `PinnedSection.tsx` — Space Header, collapsible Folders, Chrome Tab Group sync, and Pinned Tabs with drifted-URL reset (`↩`).
-  - `TodaySection.tsx` — Arc Divider (`Today`, count badge, `Space`/`All` scope toggle, `✨ Tidy`, `Clear`), `+ New Tab` button, Split View rows, and Today Tab list.
-  - `MediaBar.tsx` — Floating live audio mini-player when any tab is playing sound.
-  - `SpacesFooter.tsx` — Bottom Space Switcher dock, Archive trigger, and Settings popover.
-  - `modals/` — Native `<dialog closedby="any">` modals (`CommandDialog.tsx`, `SpaceDialog.tsx`, `ArchiveDialog.tsx`, `FolderDialog.tsx`).
-- `src/types/arc.ts`, `src/lib/storage.ts`, & `src/lib/url-utils.ts` — Shared TypeScript interfaces, `chrome.storage.local` persistence helpers, and URL/favicon utilities.
+Chrome normally enforces its horizontal top tab bar and omnibox in standard windows. This extension provides **three complementary integration layers** to replace Chrome's native UI:
+
+1. **Arc Chromeless Mode (`⛶` Button in Top Bar or Right-Click Menu)**:
+   - One click switches the Chrome window into **Fullscreen Chromeless Mode** (hiding Chrome's native horizontal tab strip and native address bar completely) and docks the **In-Page Arc Sidebar** (`260px`) on the left edge of the page, shifting page content cleanly so nothing is covered.
+   - Click `«` inside the docked sidebar to fold it into a 6px left-edge hover peek whenever you want full-bleed reading or video.
+2. **Inline Editable Omnibox & Navigation Controls**:
+   - Click the URL pill at the top of the sidebar to type any URL or Google search query directly inline (`Enter` navigates the current tab; `⌘Enter` opens in a new tab), alongside Back (`←`), Forward (`→`), Reload (`↻`), Copy Clean URL (`🔗`), and Pin (`📌`).
+3. **Auto-Collapse Inactive Tabs in Chrome's Top Strip (Windowed Mode)**:
+   - In **Settings (`⚙️`) → Auto-Collapse Inactive Tabs in Chrome Top Strip**, the extension automatically groups all background tabs into a single collapsed `[Arc]` badge in Chrome's horizontal tab bar so only your active tab is shown at the top.

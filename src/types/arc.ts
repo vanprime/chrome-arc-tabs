@@ -60,6 +60,9 @@ export interface ArcState {
   viewAllSpacesTabs: boolean
   autoArchiveHours: number
   leftPeekEnabled: boolean
+  dockedSidebarMode: boolean
+  collapseNativeTabs: boolean
+  showFavoritesGrid: boolean
   favorites: ArcFavorite[]
   spaces: ArcSpace[]
   tabSpaceMap: Record<number, string>
