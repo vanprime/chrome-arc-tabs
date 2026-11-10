@@ -1,12 +1,19 @@
 import React, { useState } from "react"
+import {
+  chromeGroupColorHex,
+  formatSpaceGroupTitle,
+  hueToChromeGroupColor
+} from "~lib/url-utils"
 import type { ArcSpace, ContextMenuItem, DragPayload } from "~types/arc"
 
 interface SpacesTopSwitcherProps {
   spaces: ArcSpace[]
   activeSpace: ArcSpace
+  tabCountsBySpace: Record<string, number>
   dragPayload: DragPayload | null
   onSwitchSpace: (spaceId: string) => Promise<void>
   onMoveTabToSpace: (tabId: number, spaceId: string) => Promise<void>
+  onSyncNativeGroups: () => Promise<void>
   onOpenCreateSpace: () => void
   onOpenEditSpace: () => void
   onOpenContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void
@@ -15,9 +22,11 @@ interface SpacesTopSwitcherProps {
 export function SpacesTopSwitcher({
   spaces,
   activeSpace,
+  tabCountsBySpace,
   dragPayload,
   onSwitchSpace,
   onMoveTabToSpace,
+  onSyncNativeGroups,
   onOpenCreateSpace,
   onOpenEditSpace,
   onOpenContextMenu
@@ -30,6 +39,9 @@ export function SpacesTopSwitcher({
         {spaces.map((space) => {
           const isActive = space.id === activeSpace.id
           const isDragOver = dragOverSpaceId === space.id
+          const groupColor = hueToChromeGroupColor(space.theme?.hue)
+          const groupHex = chromeGroupColorHex(groupColor)
+          const tabCount = tabCountsBySpace[space.id] || 0
 
           return (
             <button
@@ -39,10 +51,11 @@ export function SpacesTopSwitcher({
               style={
                 {
                   "--tile-hue": space.theme?.hue ?? 256,
-                  "--tile-accent": space.theme?.accentHue ?? 318
+                  "--tile-accent": space.theme?.accentHue ?? 318,
+                  "--group-color": groupHex
                 } as React.CSSProperties
               }
-              title={`Switch to ${space.name} Space (Drop tabs here to move)`}
+              title={`${formatSpaceGroupTitle(space)} — Synced as Native Chrome "${groupColor}" Tab Group (${tabCount} open tab${tabCount === 1 ? "" : "s"})\nClick to switch Space • Drop tabs here to move`}
               aria-current={isActive ? "page" : undefined}
               onClick={() => onSwitchSpace(space.id)}
               onContextMenu={(e) => {
@@ -55,14 +68,20 @@ export function SpacesTopSwitcher({
                     }
                   },
                   {
-                    label: `Customize ${space.name} Theme & Rules`,
+                    label: `Customize ${space.name} Theme & Group Color`,
                     action: async () => {
                       await onSwitchSpace(space.id)
                       onOpenEditSpace()
                     }
                   },
                   {
-                    label: "Create New Space...",
+                    label: "Sync All Pinned Tabs to Native Chrome Tab Groups",
+                    action: async () => {
+                      await onSyncNativeGroups()
+                    }
+                  },
+                  {
+                    label: "Create New Space (Native Tab Group)...",
                     action: () => onOpenCreateSpace()
                   }
                 ])
@@ -81,6 +100,15 @@ export function SpacesTopSwitcher({
                   await onMoveTabToSpace(dragPayload.tabId, space.id)
                 }
               }}>
+              <span
+                className="top-space-group-pill"
+                aria-hidden="true"
+                title={`Native Chrome Tab Group (${groupColor})`}>
+                <span className="top-space-group-dot" />
+                {tabCount > 0 && (
+                  <span className="top-space-group-count">{tabCount}</span>
+                )}
+              </span>
               <span className="top-space-icon" aria-hidden="true">
                 {space.icon || "🌿"}
               </span>
@@ -92,8 +120,8 @@ export function SpacesTopSwitcher({
         <button
           type="button"
           className="top-space-add-tile"
-          aria-label="Create new Space"
-          title="Create New Space"
+          aria-label="Create new Space and Native Chrome Tab Group"
+          title="Create New Space (Also creates a Native Chrome Tab Group)"
           onClick={onOpenCreateSpace}>
           <span aria-hidden="true">+</span>
         </button>

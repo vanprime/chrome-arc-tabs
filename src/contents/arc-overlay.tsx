@@ -350,6 +350,8 @@ export const getStyle: PlasmoGetStyle = () => {
 export default function ArcOverlayCSUI() {
   const [arcState, setArcState] = useState<ArcState>(DEFAULT_ARC_STATE)
   const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([])
+  const [windowState, setWindowState] = useState<string>("normal")
+  const [windowType, setWindowType] = useState<string>("normal")
   const [peekOpen, setPeekOpen] = useState(false)
   const [dockCollapsed, setDockCollapsed] = useState(false)
   const [omniboxText, setOmniboxText] = useState("")
@@ -380,6 +382,8 @@ export default function ArcOverlayCSUI() {
       if (res?.ok) {
         setArcState(res.arcState)
         setTabs(res.tabs || [])
+        setWindowState(res.windowState || "normal")
+        setWindowType(res.windowType || "normal")
         const active = (res.tabs || []).find((t: chrome.tabs.Tab) => t.active)
         if (active?.url) {
           setOmniboxText(formatCleanDomain(active.url))
@@ -390,7 +394,12 @@ export default function ArcOverlayCSUI() {
     }
   }, [])
 
-  const isDockedActive = Boolean(arcState.dockedSidebarMode && !dockCollapsed)
+  const shouldDockSidebar = Boolean(
+    arcState.dockedSidebarMode ||
+      windowType === "popup" ||
+      windowState === "fullscreen"
+  )
+  const isDockedActive = Boolean(shouldDockSidebar && !dockCollapsed)
 
   // Shift page layout smoothly when Docked Chromeless Sidebar is active
   useEffect(() => {
@@ -559,7 +568,7 @@ export default function ArcOverlayCSUI() {
           "--arc-accent": activeSpace.theme?.accentHue ?? 318
         } as React.CSSProperties
       }>
-      {(arcState.leftPeekEnabled !== false || arcState.dockedSidebarMode) &&
+      {(arcState.leftPeekEnabled !== false || shouldDockSidebar) &&
         !isDockedActive && (
           <div
             className="peek-edge-sensor"
@@ -633,6 +642,22 @@ export default function ArcOverlayCSUI() {
           <button
             type="button"
             className="csui-icon-btn"
+            title={
+              windowType === "popup"
+                ? "Restore Normal Chrome Window"
+                : "Open Tabless Window (Hides Chrome Tab & URL Bar)"
+            }
+            onClick={async () => {
+              await chrome.runtime.sendMessage({
+                type: "TOGGLE_TABLESS_WINDOW"
+              })
+              await fetchSnapshot()
+            }}>
+            ❐
+          </button>
+          <button
+            type="button"
+            className="csui-icon-btn"
             title="Toggle Arc Chromeless Fullscreen"
             onClick={async () => {
               await chrome.runtime.sendMessage({
@@ -642,7 +667,7 @@ export default function ArcOverlayCSUI() {
             }}>
             ⛶
           </button>
-          {arcState.dockedSidebarMode && (
+          {shouldDockSidebar && (
             <button
               type="button"
               className="csui-icon-btn"

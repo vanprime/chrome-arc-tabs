@@ -127,3 +127,90 @@ export function categorizeTabDomain(url?: string): string {
   }
   return `🌐 ${host || "General"}`
 }
+
+export function hueToChromeGroupColor(
+  hue = 256
+): chrome.tabGroups.ColorEnum {
+  const norm = ((hue % 360) + 360) % 360
+  if (norm < 18 || norm >= 345) return "red"
+  if (norm < 45) return "orange"
+  if (norm < 72) return "yellow"
+  if (norm < 165) return "green"
+  if (norm < 200) return "cyan"
+  if (norm < 242) return "blue"
+  if (norm < 295) return "purple"
+  return "pink"
+}
+
+export function chromeGroupColorToHue(color?: string): {
+  hue: number
+  accentHue: number
+} {
+  switch (color) {
+    case "red":
+      return { hue: 352, accentHue: 24 }
+    case "orange":
+      return { hue: 28, accentHue: 348 }
+    case "yellow":
+      return { hue: 48, accentHue: 28 }
+    case "green":
+      return { hue: 158, accentHue: 192 }
+    case "cyan":
+      return { hue: 186, accentHue: 222 }
+    case "blue":
+      return { hue: 210, accentHue: 256 }
+    case "pink":
+      return { hue: 326, accentHue: 280 }
+    case "grey":
+      return { hue: 220, accentHue: 245 }
+    case "purple":
+    default:
+      return { hue: 256, accentHue: 318 }
+  }
+}
+
+export function chromeGroupColorHex(color?: string): string {
+  switch (color) {
+    case "red":
+      return "#ef4444"
+    case "orange":
+      return "#f97316"
+    case "yellow":
+      return "#eab308"
+    case "green":
+      return "#10b981"
+    case "cyan":
+      return "#06b6d4"
+    case "blue":
+      return "#3b82f6"
+    case "pink":
+      return "#ec4899"
+    case "grey":
+      return "#94a3b8"
+    case "purple":
+    default:
+      return "#a855f7"
+  }
+}
+
+export function formatSpaceGroupTitle(
+  space: Pick<ArcSpace, "icon" | "name">
+): string {
+  const icon = (space.icon || "").trim()
+  const name = (space.name || "Space").trim()
+  return icon ? `${icon} ${name}` : name
+}
+
+export function doesGroupMatchSpace(
+  group: chrome.tabGroups.TabGroup,
+  space: ArcSpace
+): boolean {
+  if (space.chromeGroupId && group.id === space.chromeGroupId) {
+    return true
+  }
+  const gTitle = (group.title || "").trim().toLowerCase()
+  if (!gTitle) return false
+  const fullTitle = formatSpaceGroupTitle(space).toLowerCase()
+  const nameOnly = (space.name || "").trim().toLowerCase()
+  return gTitle === fullTitle || gTitle === nameOnly
+}

@@ -30,6 +30,7 @@ export default function ArcSidePanel() {
   const [arcState, setArcState] = useState<ArcState>(DEFAULT_ARC_STATE)
   const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([])
   const [windowState, setWindowState] = useState<string>("normal")
+  const [windowType, setWindowType] = useState<string>("normal")
   const [filterQuery, setFilterQuery] = useState("")
   const [tidyGroupedMode, setTidyGroupedMode] = useState(false)
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null)
@@ -90,7 +91,8 @@ export default function ArcSidePanel() {
     (
       nextArcState: ArcState,
       nextTabs: chrome.tabs.Tab[],
-      nextWinState = "normal"
+      nextWinState = "normal",
+      nextWinType = "normal"
     ) => {
       const cloned = structuredClone(nextArcState)
       const openTabMap = new Map(nextTabs.map((t) => [t.id, t]))
@@ -112,6 +114,7 @@ export default function ArcSidePanel() {
       setArcState(cloned)
       setTabs(nextTabs)
       setWindowState(nextWinState)
+      setWindowType(nextWinType)
     },
     []
   )
@@ -125,7 +128,8 @@ export default function ArcSidePanel() {
         reconcileAndSetSnapshot(
           response.arcState,
           response.tabs || [],
-          response.windowState || "normal"
+          response.windowState || "normal",
+          response.windowType || "normal"
         )
       } else {
         const stored = await chrome.storage.local.get("arcState")
@@ -247,16 +251,18 @@ export default function ArcSidePanel() {
         const targetSpace = arcState.spaces[idx]
         if (targetSpace) {
           e.preventDefault()
-          await updateAndPersistState((draft) => {
-            draft.activeSpaceId = targetSpace.id
+          await chrome.runtime.sendMessage({
+            type: "SWITCH_SPACE",
+            spaceId: targetSpace.id
           })
+          await refreshSnapshot()
           showToast(`Switched to ${targetSpace.icon} ${targetSpace.name}`)
         }
       }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [arcState.spaces, updateAndPersistState, showToast])
+  }, [arcState.spaces, refreshSnapshot, showToast])
 
   const openCustomContextMenu = useCallback(
     (clientX: number, clientY: number, items: ContextMenuItem[]) => {
@@ -342,9 +348,13 @@ export default function ArcSidePanel() {
         })
         draft.tabSpaceMap[tabId] = sp.id
       })
+      await chrome.runtime.sendMessage({
+        type: "SYNC_SPACE_TAB_GROUPS"
+      })
+      await refreshSnapshot()
       showToast(`Pinned to ${activeSpace.name}`)
     },
-    [activeSpace, updateAndPersistState, showToast]
+    [activeSpace, updateAndPersistState, refreshSnapshot, showToast]
   )
 
   const linkedTabIds = new Set<number>()
@@ -352,6 +362,16 @@ export default function ArcSidePanel() {
     for (const p of sp.pinnedTabs) {
       if (p.linkedTabId) linkedTabIds.add(p.linkedTabId)
     }
+  }
+
+  const tabCountsBySpace: Record<string, number> = {}
+  for (const sp of arcState.spaces) {
+    tabCountsBySpace[sp.id] = 0
+  }
+  for (const tab of tabs) {
+    if (!tab.id) continue
+    const assigned = arcState.tabSpaceMap[tab.id] || arcState.activeSpaceId
+    tabCountsBySpace[assigned] = (tabCountsBySpace[assigned] || 0) + 1
   }
 
   const todayTabs = tabs.filter((tab) => {
@@ -529,6 +549,34 @@ export default function ArcSidePanel() {
     }
   }, [activeSpace.id, updateAndPersistState, showToast])
 
+  const handleToggleCollapseNativeTabs = useCallback(async () => {
+    const enabled = !arcState.collapseNativeTabs
+    await chrome.runtime.sendMessage({
+      type: "SET_COLLAPSE_NATIVE_TABS",
+      enabled
+    })
+    await refreshSnapshot()
+    showToast(
+      enabled
+        ? "Collapsed background tabs into [Arc] pill"
+        : "Ungrouped native Chrome tab strip"
+    )
+  }, [arcState.collapseNativeTabs, refreshSnapshot, showToast])
+
+  const handleToggleTablessWindow = useCallback(async () => {
+    const res = await chrome.runtime.sendMessage({
+      type: "TOGGLE_TABLESS_WINDOW"
+    })
+    if (res?.ok) {
+      await refreshSnapshot()
+      showToast(
+        res.tabless
+          ? "Opened Tabless Window (No Chrome Tab/URL Bar)"
+          : "Restored Normal Chrome Window"
+      )
+    }
+  }, [refreshSnapshot, showToast])
+
   const handleToggleChromelessMode = useCallback(async () => {
     const res = await chrome.runtime.sendMessage({
       type: "TOGGLE_CHROMELESS_MODE"
@@ -549,6 +597,8 @@ export default function ArcSidePanel() {
         activeTab={activeTab}
         activeSpace={activeSpace}
         filterQuery={filterQuery}
+        collapseNativeTabs={Boolean(arcState.collapseNativeTabs)}
+        isTablessWindow={windowType === "popup"}
         isChromeless={
           windowState === "fullscreen" || Boolean(arcState.dockedSidebarMode)
         }
@@ -585,6 +635,8 @@ export default function ArcSidePanel() {
             await refreshSnapshot()
           }
         }}
+        onToggleCollapseNativeTabs={handleToggleCollapseNativeTabs}
+        onToggleTablessWindow={handleToggleTablessWindow}
         onToggleChromelessMode={handleToggleChromelessMode}
         onOpenArchive={() => setIsArchiveOpen(true)}
       />
@@ -594,11 +646,14 @@ export default function ArcSidePanel() {
         <SpacesTopSwitcher
           spaces={arcState.spaces}
           activeSpace={activeSpace}
+          tabCountsBySpace={tabCountsBySpace}
           dragPayload={dragPayload}
           onSwitchSpace={async (spaceId) => {
-            await updateAndPersistState((draft) => {
-              draft.activeSpaceId = spaceId
+            await chrome.runtime.sendMessage({
+              type: "SWITCH_SPACE",
+              spaceId
             })
+            await refreshSnapshot()
           }}
           onMoveTabToSpace={async (tabId, spaceId) => {
             setDragPayload(null)
@@ -606,9 +661,21 @@ export default function ArcSidePanel() {
             await updateAndPersistState((draft) => {
               draft.tabSpaceMap[tabId] = spaceId
             })
+            await chrome.runtime.sendMessage({
+              type: "SYNC_SPACE_TAB_GROUPS"
+            })
+            await refreshSnapshot()
             if (target) {
-              showToast(`Moved tab to ${target.name}`)
+              showToast(`Moved tab to ${target.icon} ${target.name} Tab Group`)
             }
+          }}
+          onSyncNativeGroups={async () => {
+            await chrome.runtime.sendMessage({
+              type: "SYNC_SPACE_TAB_GROUPS",
+              materializeMissingSpaces: true
+            })
+            await refreshSnapshot()
+            showToast("Synced all Spaces & Pins as Native Chrome Tab Groups")
           }}
           onOpenCreateSpace={() =>
             setSpaceModalState({ open: true, isNew: true })
@@ -829,8 +896,14 @@ export default function ArcSidePanel() {
             await updateAndPersistState((draft) => {
               draft.tabSpaceMap[tabId] = spaceId
             })
+            await chrome.runtime.sendMessage({
+              type: "SYNC_SPACE_TAB_GROUPS"
+            })
+            await refreshSnapshot()
             if (targetSpace) {
-              showToast(`Moved to ${targetSpace.name}`)
+              showToast(
+                `Moved to ${targetSpace.icon} ${targetSpace.name} Tab Group`
+              )
             }
           }}
           onToggleMuteTab={async (tabId) => {
@@ -871,6 +944,18 @@ export default function ArcSidePanel() {
         <div className="popover-section-title">
           Native Chrome Integration &amp; Layout
         </div>
+
+        <button
+          type="button"
+          className="popover-action-item"
+          onClick={handleToggleTablessWindow}>
+          <span>
+            ❐{" "}
+            {windowType === "popup"
+              ? "Restore Normal Chrome Window"
+              : "Open Tabless Window (No Chrome Tab/URL Bar)"}
+          </span>
+        </button>
 
         <button
           type="button"
@@ -1035,9 +1120,11 @@ export default function ArcSidePanel() {
         tabs={tabs}
         activeTab={activeTab}
         onSwitchSpace={async (spaceId) => {
-          await updateAndPersistState((draft) => {
-            draft.activeSpaceId = spaceId
+          await chrome.runtime.sendMessage({
+            type: "SWITCH_SPACE",
+            spaceId
           })
+          await refreshSnapshot()
         }}
         onActivateOrOpenUrl={activateOrOpenUrl}
         onToggleTidyMode={() => {
@@ -1075,7 +1162,14 @@ export default function ArcSidePanel() {
               draft.spaces.push(newSpace)
               draft.activeSpaceId = newSpace.id
             })
-            showToast(`Created Space "${data.name}"`)
+            await chrome.runtime.sendMessage({
+              type: "SYNC_SPACE_TAB_GROUPS",
+              materializeMissingSpaces: true
+            })
+            await refreshSnapshot()
+            showToast(
+              `Created Space & Native Tab Group "${data.icon} ${data.name}"`
+            )
           } else {
             await updateAndPersistState((draft) => {
               const sp = draft.spaces.find((s) => s.id === activeSpace.id)
@@ -1091,16 +1185,28 @@ export default function ArcSidePanel() {
                 sp.domainRules = data.domainRules
               }
             })
-            showToast(`Saved "${data.name}"`)
+            await chrome.runtime.sendMessage({
+              type: "SYNC_SPACE_TAB_GROUPS"
+            })
+            await refreshSnapshot()
+            showToast(
+              `Updated Space & Native Tab Group "${data.icon} ${data.name}"`
+            )
           }
         }}
         onDeleteSpace={async () => {
           if (arcState.spaces.length <= 1) return
           const deletedName = activeSpace.name
+          const deletedGroupId = activeSpace.chromeGroupId
           await updateAndPersistState((draft) => {
             draft.spaces = draft.spaces.filter((s) => s.id !== activeSpace.id)
             draft.activeSpaceId = draft.spaces[0].id
           })
+          await chrome.runtime.sendMessage({
+            type: "DELETE_SPACE_TAB_GROUP",
+            groupId: deletedGroupId
+          })
+          await refreshSnapshot()
           showToast(`Deleted Space "${deletedName}"`)
         }}
       />

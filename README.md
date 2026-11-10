@@ -35,14 +35,17 @@ pnpm typecheck
 
 ---
 
-## Replacing Chrome's Native Tabs & Navigation
+## Replacing Chrome's Native Tabs & Navigation (Default + 1-Click Top Controls)
 
-Chrome normally enforces its horizontal top tab bar and omnibox in standard windows. This extension provides **three complementary integration layers** to replace Chrome's native UI:
+Right at the top of the sidebar (`TopBar`), you have a **1-Click Chrome UI Mode Bar** with three instant controls:
 
-1. **Arc Chromeless Mode (`⛶` Button in Top Bar or Right-Click Menu)**:
-   - One click switches the Chrome window into **Fullscreen Chromeless Mode** (hiding Chrome's native horizontal tab strip and native address bar completely) and docks the **In-Page Arc Sidebar** (`260px`) on the left edge of the page, shifting page content cleanly so nothing is covered.
-   - Click `«` inside the docked sidebar to fold it into a 6px left-edge hover peek whenever you want full-bleed reading or video.
-2. **Inline Editable Omnibox & Navigation Controls**:
-   - Click the URL pill at the top of the sidebar to type any URL or Google search query directly inline (`Enter` navigates the current tab; `⌘Enter` opens in a new tab), alongside Back (`←`), Forward (`→`), Reload (`↻`), Copy Clean URL (`🔗`), and Pin (`📌`).
-3. **Auto-Collapse Inactive Tabs in Chrome's Top Strip (Windowed Mode)**:
-   - In **Settings (`⚙️`) → Auto-Collapse Inactive Tabs in Chrome Top Strip**, the extension automatically groups all background tabs into a single collapsed `[Arc]` badge in Chrome's horizontal tab bar so only your active tab is shown at the top.
+1. **`✓ Collapse Top Tabs` & Bidirectional Native Chrome Tab Groups (Enabled by Default)**:
+   - Every Space at the top of the sidebar (`🌿 Personal`, `⚡ Work`, `🔭 Research`, plus any custom Space you create) is represented as a **real Native Chrome Tab Group (`chrome.tabGroups`)** in the browser window with matching title, emoji, and color (`purple`, `blue`, `green`, etc.).
+   - Each Space's Pinned Tabs and Today Tabs are automatically placed inside that Space's native Chrome Tab Group — so **even if you disable or delete the extension, all your Spaces and tabs remain intact as native Chrome Tab Groups in Chrome!**
+   - Inactive Spaces' native Chrome Tab Groups are automatically collapsed into compact colored pills in Chrome's horizontal tab bar so only your active Space is expanded.
+   - Bidirectional sync: renaming or recoloring a Tab Group in Chrome's top bar updates the Space in Arc, and creating a named Tab Group in Chrome automatically adds it to the top Spaces switcher.
+2. **`❐ Tabless Win` (Chromeless Desktop Window — No Chrome Tab Bar or URL Bar)**:
+   - Converts the current tab into a regular resizable desktop window (`type: "popup"`) where Chrome completely omits the horizontal tab strip, native address bar, and bookmarks bar, while automatically docking the **In-Page Left Arc Sidebar** (`260px`) for full Spaces, tabs, and URL navigation.
+   - Click `❐` in the docked sidebar (or right-click anywhere on the page) to restore a normal Chrome window in one click.
+3. **`⛶ Fullscreen` (Edge-to-Edge Chromeless Arc Mode)**:
+   - Enters fullscreen chromeless mode and docks the **In-Page Left Arc Sidebar** (`260px`) on the left edge of the page. Click `«` in the docked sidebar to fold it into a 6px left-edge hover peek.

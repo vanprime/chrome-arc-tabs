@@ -1,12 +1,15 @@
 import type { ArcState } from "~types/arc"
 
+export const CURRENT_STATE_VERSION = 2
+
 export const DEFAULT_ARC_STATE: ArcState = {
+  stateVersion: CURRENT_STATE_VERSION,
   activeSpaceId: "space-personal",
   viewAllSpacesTabs: false,
   autoArchiveHours: 12,
   leftPeekEnabled: true,
   dockedSidebarMode: false,
-  collapseNativeTabs: false,
+  collapseNativeTabs: true,
   showFavoritesGrid: true,
   favorites: [
     {
@@ -137,23 +140,36 @@ export async function getArcState(): Promise<ArcState> {
       await chrome.storage.local.set({ arcState: DEFAULT_ARC_STATE })
       return structuredClone(DEFAULT_ARC_STATE)
     }
-    return {
+
+    const raw = data.arcState as Partial<ArcState>
+    const needsMigration = (raw.stateVersion ?? 1) < CURRENT_STATE_VERSION
+
+    const merged: ArcState = {
       ...DEFAULT_ARC_STATE,
-      ...data.arcState,
+      ...raw,
+      stateVersion: CURRENT_STATE_VERSION,
+      // Enable collapseNativeTabs by default on upgrade to v2
+      collapseNativeTabs: needsMigration
+        ? true
+        : (raw.collapseNativeTabs ?? true),
       spaces:
-        Array.isArray(data.arcState.spaces) && data.arcState.spaces.length > 0
-          ? data.arcState.spaces
+        Array.isArray(raw.spaces) && raw.spaces.length > 0
+          ? raw.spaces
           : DEFAULT_ARC_STATE.spaces,
-      favorites: Array.isArray(data.arcState.favorites)
-        ? data.arcState.favorites
+      favorites: Array.isArray(raw.favorites)
+        ? raw.favorites
         : DEFAULT_ARC_STATE.favorites,
-      tabSpaceMap: data.arcState.tabSpaceMap || {},
-      tabLastActive: data.arcState.tabLastActive || {},
-      splitPairs: Array.isArray(data.arcState.splitPairs)
-        ? data.arcState.splitPairs
-        : [],
-      archive: Array.isArray(data.arcState.archive) ? data.arcState.archive : []
+      tabSpaceMap: raw.tabSpaceMap || {},
+      tabLastActive: raw.tabLastActive || {},
+      splitPairs: Array.isArray(raw.splitPairs) ? raw.splitPairs : [],
+      archive: Array.isArray(raw.archive) ? raw.archive : []
     }
+
+    if (needsMigration) {
+      await chrome.storage.local.set({ arcState: merged })
+    }
+
+    return merged
   } catch (err) {
     console.error("Error reading arcState:", err)
     return structuredClone(DEFAULT_ARC_STATE)

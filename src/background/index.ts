@@ -1,7 +1,17 @@
 import { getArcState, saveArcState } from "~lib/storage"
-import { cleanTrackingUrl, matchSpaceByDomain } from "~lib/url-utils"
+import {
+  chromeGroupColorToHue,
+  cleanTrackingUrl,
+  doesGroupMatchSpace,
+  formatSpaceGroupTitle,
+  hueToChromeGroupColor,
+  matchSpaceByDomain,
+  urlsRoughlyMatch
+} from "~lib/url-utils"
 
 export {}
+
+let isSyncingTabGroups = false
 
 async function flashActionBadge(text: string, color = "#6E56CF"): Promise<void> {
   try {
@@ -37,8 +47,13 @@ async function setupContextMenus(): Promise<void> {
       contexts: ["page", "link"]
     })
     chrome.contextMenus.create({
+      id: "arc-toggle-tabless",
+      title: "Toggle Tabless Arc Window (Hide Native Chrome Bar)",
+      contexts: ["page"]
+    })
+    chrome.contextMenus.create({
       id: "arc-toggle-chromeless",
-      title: "Toggle Arc Chromeless Mode (Hide Native Chrome Bar)",
+      title: "Toggle Arc Fullscreen Mode",
       contexts: ["page"]
     })
   } catch (err) {
@@ -55,68 +70,224 @@ async function ensureSidePanelBehavior(): Promise<void> {
 }
 
 /**
- * When `collapseNativeTabs` is enabled, collapses all inactive unpinned tabs
- * in the window into a single compact "Arc" Chrome Tab Group so the native
- * horizontal tab bar only shows the active tab + a tiny [Arc] pill.
+ * Bidirectional Native Chrome Tab Group Engine:
+ * - Represents every Arc Space (`🌿 Personal`, `⚡ Work`, `🔭 Research`, + user-created Spaces)
+ *   as a real native Chrome Tab Group (`chrome.tabGroups`) with matching title, emoji, and color.
+ * - Materializes each Space's pinned tabs into its native Chrome Tab Group so that if the user
+ *   ever disables or deletes the extension, 100% of their Spaces and tabs remain intact in Chrome!
+ * - When `collapseNativeTabs` is enabled (default), automatically collapses inactive Spaces'
+ *   Tab Groups into compact colored pills in Chrome's horizontal tab bar.
  */
-async function syncCollapsedNativeTabStrip(windowId?: number): Promise<void> {
+async function syncSpacesWithNativeTabGroups(options?: {
+  windowId?: number
+  materializeMissingSpaces?: boolean
+}): Promise<void> {
+  if (isSyncingTabGroups) return
+  isSyncingTabGroups = true
   try {
     const arcState = await getArcState()
-    const targetWindow = windowId
-      ? await chrome.windows.get(windowId, { populate: true })
+    let targetWindow = options?.windowId
+      ? await chrome.windows.get(options.windowId, { populate: true })
       : await chrome.windows.getLastFocused({ populate: true })
-    if (!targetWindow?.id || !targetWindow.tabs) return
 
-    const groups = await chrome.tabGroups.query({ windowId: targetWindow.id })
-    const arcGroup = groups.find((g) => g.title === "Arc")
-
-    if (!arcState.collapseNativeTabs) {
-      if (arcGroup) {
-        const groupedTabs = targetWindow.tabs
-          .filter((t) => t.groupId === arcGroup.id && typeof t.id === "number")
-          .map((t) => t.id as number)
-        if (groupedTabs.length > 0) {
-          await chrome.tabs.ungroup(groupedTabs)
-        }
-      }
+    if (!targetWindow || targetWindow.type !== "normal") {
+      const normalWins = await chrome.windows.getAll({
+        populate: true,
+        windowTypes: ["normal"]
+      })
+      targetWindow = normalWins[0]
+    }
+    if (!targetWindow?.id || !targetWindow.tabs) {
       return
     }
 
-    const activeTab = targetWindow.tabs.find((t) => t.active)
-    if (activeTab?.id && activeTab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
-      if (!arcGroup || activeTab.groupId === arcGroup.id) {
+    let windowTabs = [...targetWindow.tabs]
+    let groups = await chrome.tabGroups.query({ windowId: targetWindow.id })
+    let stateChanged = false
+
+    // 1. Adopt any custom named Chrome Tab Groups created natively by the user in Chrome's top bar
+    for (const grp of groups) {
+      const rawTitle = (grp.title || "").trim()
+      if (!rawTitle || rawTitle === "Arc") continue
+      const alreadyMatched = arcState.spaces.some((sp) =>
+        doesGroupMatchSpace(grp, sp)
+      )
+      if (!alreadyMatched) {
+        const emojiMatch = rawTitle.match(
+          /^(\p{Extended_Pictographic})\s*(.+)$/u
+        )
+        const icon = emojiMatch ? emojiMatch[1] : "🗂️"
+        const name = emojiMatch ? emojiMatch[2].trim() : rawTitle
+        const hues = chromeGroupColorToHue(grp.color)
+        const newSpaceId = `space-native-${grp.id}-${Date.now()}`
+        arcState.spaces.push({
+          id: newSpaceId,
+          name,
+          icon,
+          theme: {
+            hue: hues.hue,
+            accentHue: hues.accentHue,
+            saturation: 74,
+            style: "custom"
+          },
+          domainRules: [],
+          folders: [],
+          pinnedTabs: [],
+          chromeGroupId: grp.id
+        })
+        for (const t of windowTabs) {
+          if (t.id && t.groupId === grp.id) {
+            arcState.tabSpaceMap[t.id] = newSpaceId
+          }
+        }
+        stateChanged = true
+      }
+    }
+
+    const activeTab = windowTabs.find((t) => t.active)
+
+    // 2. Ensure every Arc Space is backed by a real Native Chrome Tab Group
+    for (const space of arcState.spaces) {
+      const matchedGroup = groups.find((g) => doesGroupMatchSpace(g, space))
+
+      // Reconcile pinnedTabs with currently open tabs
+      for (const pin of space.pinnedTabs) {
+        if (
+          pin.linkedTabId &&
+          !windowTabs.some((t) => t.id === pin.linkedTabId)
+        ) {
+          pin.linkedTabId = null
+          stateChanged = true
+        }
+        if (!pin.linkedTabId) {
+          const matchingOpenTab = windowTabs.find((t) =>
+            urlsRoughlyMatch(t.url || t.pendingUrl, pin.url)
+          )
+          if (matchingOpenTab?.id) {
+            pin.linkedTabId = matchingOpenTab.id
+            arcState.tabSpaceMap[matchingOpenTab.id] = space.id
+            stateChanged = true
+          }
+        }
+      }
+
+      // Collect all open unpinned tabs belonging to this Space
+      const spaceTabIds: number[] = []
+      for (const t of windowTabs) {
+        if (typeof t.id !== "number" || t.pinned) continue
+        const assignedSpaceId = arcState.tabSpaceMap[t.id]
+        const isLinkedPin = space.pinnedTabs.some((p) => p.linkedTabId === t.id)
+        const isInMatchedGroup =
+          !assignedSpaceId && matchedGroup && t.groupId === matchedGroup.id
+        const isUnassignedInActiveSpace =
+          !assignedSpaceId &&
+          space.id === arcState.activeSpaceId &&
+          (t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE ||
+            groups.find((g) => g.id === t.groupId)?.title === "Arc")
+
+        if (
+          assignedSpaceId === space.id ||
+          isLinkedPin ||
+          isInMatchedGroup ||
+          isUnassignedInActiveSpace
+        ) {
+          spaceTabIds.push(t.id)
+          if (arcState.tabSpaceMap[t.id] !== space.id) {
+            arcState.tabSpaceMap[t.id] = space.id
+            stateChanged = true
+          }
+        }
+      }
+
+      // Materialize missing pinned tabs (or starter tab if Space has 0 open tabs)
+      // so every Space ALWAYS exists as a real Chrome Tab Group in the browser!
+      const shouldMaterialize =
+        spaceTabIds.length === 0 || Boolean(options?.materializeMissingSpaces)
+
+      if (shouldMaterialize) {
+        const unlinkedPins = space.pinnedTabs
+          .filter((p) => !p.linkedTabId && p.url)
+          .slice(0, 6)
+
+        if (unlinkedPins.length > 0) {
+          for (const pin of unlinkedPins) {
+            try {
+              const createdTab = await chrome.tabs.create({
+                windowId: targetWindow.id,
+                url: pin.url,
+                active: false
+              })
+              if (createdTab.id) {
+                pin.linkedTabId = createdTab.id
+                arcState.tabSpaceMap[createdTab.id] = space.id
+                spaceTabIds.push(createdTab.id)
+                windowTabs.push(createdTab)
+                stateChanged = true
+              }
+            } catch {
+              // Ignore invalid URL
+            }
+          }
+        } else if (spaceTabIds.length === 0) {
+          // Brand-new custom Space with 0 pins and 0 open tabs: create a starter tab so its native Tab Group exists immediately
+          try {
+            const starterTab = await chrome.tabs.create({
+              windowId: targetWindow.id,
+              url: "chrome://newtab",
+              active: false
+            })
+            if (starterTab.id) {
+              arcState.tabSpaceMap[starterTab.id] = space.id
+              spaceTabIds.push(starterTab.id)
+              windowTabs.push(starterTab)
+              stateChanged = true
+            }
+          } catch {
+            // Ignore if window closing
+          }
+        }
+      }
+
+      if (spaceTabIds.length > 0) {
         try {
-          await chrome.tabs.ungroup(activeTab.id)
+          const groupId = await chrome.tabs.group({
+            tabIds: spaceTabIds,
+            ...(matchedGroup && matchedGroup.windowId === targetWindow.id
+              ? { groupId: matchedGroup.id }
+              : { createProperties: { windowId: targetWindow.id } })
+          })
+          if (space.chromeGroupId !== groupId) {
+            space.chromeGroupId = groupId
+            stateChanged = true
+          }
+
+          const containsActiveTab = Boolean(
+            activeTab?.id && spaceTabIds.includes(activeTab.id)
+          )
+          const shouldCollapse = Boolean(
+            arcState.collapseNativeTabs &&
+              !containsActiveTab &&
+              space.id !== arcState.activeSpaceId
+          )
+
+          await chrome.tabGroups.update(groupId, {
+            title: formatSpaceGroupTitle(space),
+            color: hueToChromeGroupColor(space.theme?.hue),
+            collapsed: shouldCollapse
+          })
         } catch {
-          // Ignore if tab is being dragged
+          // Tab strip may be mid-drag
         }
       }
     }
 
-    const backgroundTabIds = targetWindow.tabs
-      .filter(
-        (t) =>
-          typeof t.id === "number" &&
-          !t.active &&
-          !t.pinned &&
-          (t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE ||
-            (arcGroup && t.groupId === arcGroup.id))
-      )
-      .map((t) => t.id as number)
-
-    if (backgroundTabIds.length === 0) return
-
-    const groupId = await chrome.tabs.group({
-      tabIds: backgroundTabIds,
-      ...(arcGroup ? { groupId: arcGroup.id } : {})
-    })
-    await chrome.tabGroups.update(groupId, {
-      title: "Arc",
-      color: "purple",
-      collapsed: true
-    })
-  } catch {
-    // Tab strip may be in middle of user drag operation
+    if (stateChanged) {
+      await saveArcState(arcState)
+    }
+  } catch (err) {
+    console.error("Error syncing Spaces with native Chrome Tab Groups:", err)
+  } finally {
+    isSyncingTabGroups = false
   }
 }
 
@@ -144,17 +315,69 @@ async function toggleChromelessMode(forceState?: boolean): Promise<{
   }
 }
 
-ensureSidePanelBehavior()
+/**
+ * Converts the active tab into a windowed `type: "popup"` Chrome App Window
+ * (which has NO horizontal tab bar and NO Chrome address bar even when not fullscreen!)
+ * or restores a popup window back into a normal window.
+ */
+async function toggleTablessWindow(): Promise<{ tablessWindow: boolean }> {
+  const currentWin = await chrome.windows.getLastFocused({ populate: true })
+  const activeTab = currentWin?.tabs?.find((t) => t.active)
+  if (!currentWin || !activeTab?.id) {
+    return { tablessWindow: false }
+  }
+
+  if (currentWin.type === "popup") {
+    const allWins = await chrome.windows.getAll({ windowTypes: ["normal"] })
+    const targetNormal = allWins[0]
+    if (targetNormal?.id) {
+      await chrome.tabs.move(activeTab.id, {
+        windowId: targetNormal.id,
+        index: -1
+      })
+      await chrome.tabs.update(activeTab.id, { active: true })
+      await chrome.windows.update(targetNormal.id, { focused: true })
+    } else {
+      await chrome.windows.create({
+        tabId: activeTab.id,
+        type: "normal",
+        focused: true
+      })
+    }
+    return { tablessWindow: false }
+  }
+
+  // Convert active tab into a chromeless `popup` window with same bounds
+  await chrome.windows.create({
+    tabId: activeTab.id,
+    type: "popup",
+    left: currentWin.left,
+    top: currentWin.top,
+    width: currentWin.width || 1280,
+    height: currentWin.height || 860,
+    focused: true
+  })
+  return { tablessWindow: true }
+}
+
+// Run immediately on service worker boot
+;(async () => {
+  await ensureSidePanelBehavior()
+  await getArcState()
+  await syncSpacesWithNativeTabGroups()
+})()
 
 chrome.runtime.onInstalled.addListener(async () => {
   await ensureSidePanelBehavior()
   await getArcState()
   await setupContextMenus()
+  await syncSpacesWithNativeTabGroups({ materializeMissingSpaces: true })
   await chrome.alarms.create("arc-auto-archive", { periodInMinutes: 15 })
 })
 
 chrome.runtime.onStartup.addListener(async () => {
   await ensureSidePanelBehavior()
+  await syncSpacesWithNativeTabGroups({ materializeMissingSpaces: true })
   await chrome.alarms.create("arc-auto-archive", { periodInMinutes: 15 })
 })
 
@@ -178,7 +401,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
     arcState.tabSpaceMap[tab.id] = targetSpaceId
     arcState.tabLastActive[tab.id] = Date.now()
     await saveArcState(arcState)
-    await syncCollapsedNativeTabStrip(tab.windowId)
+    await syncSpacesWithNativeTabGroups({ windowId: tab.windowId })
   } catch (err) {
     console.error("Error handling tab creation:", err)
   }
@@ -190,23 +413,50 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
     arcState.tabLastActive[tabId] = Date.now()
     if (!arcState.tabSpaceMap[tabId]) {
       arcState.tabSpaceMap[tabId] = arcState.activeSpaceId
+    } else if (arcState.tabSpaceMap[tabId] !== arcState.activeSpaceId) {
+      // When the user clicks a tab belonging to another Space in Chrome's native tab bar,
+      // automatically switch the active Space in the sidebar to match!
+      arcState.activeSpaceId = arcState.tabSpaceMap[tabId]
     }
     await saveArcState(arcState)
-    await syncCollapsedNativeTabStrip(windowId)
+    await syncSpacesWithNativeTabGroups({ windowId })
   } catch (err) {
     console.error("Error tracking tab activation:", err)
   }
 })
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (!changeInfo.url && changeInfo.status !== "complete") return
+  if (
+    !changeInfo.url &&
+    changeInfo.status !== "complete" &&
+    changeInfo.groupId === undefined
+  ) {
+    return
+  }
   try {
     const arcState = await getArcState()
     let changed = false
+    let needsGroupSync = false
+
+    // If user manually dragged a tab into a different native Chrome Tab Group
+    if (
+      !isSyncingTabGroups &&
+      changeInfo.groupId !== undefined &&
+      changeInfo.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE
+    ) {
+      const matchedSpace = arcState.spaces.find(
+        (s) => s.chromeGroupId === changeInfo.groupId
+      )
+      if (matchedSpace && arcState.tabSpaceMap[tabId] !== matchedSpace.id) {
+        arcState.tabSpaceMap[tabId] = matchedSpace.id
+        changed = true
+      }
+    }
 
     if (!arcState.tabSpaceMap[tabId]) {
       arcState.tabSpaceMap[tabId] = arcState.activeSpaceId
       changed = true
+      needsGroupSync = true
     }
 
     if (changeInfo.url) {
@@ -214,6 +464,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       if (matchedSpaceId && arcState.tabSpaceMap[tabId] !== matchedSpaceId) {
         arcState.tabSpaceMap[tabId] = matchedSpaceId
         changed = true
+        needsGroupSync = true
       }
     }
 
@@ -229,8 +480,59 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (changed) {
       await saveArcState(arcState)
     }
+    if (needsGroupSync) {
+      await syncSpacesWithNativeTabGroups({ windowId: tab.windowId })
+    }
   } catch (err) {
     console.error("Error on tab update:", err)
+  }
+})
+
+// Bidirectional sync: if the user renames or recolors a Tab Group directly in Chrome's native tab bar,
+// update the corresponding Arc Space automatically!
+chrome.tabGroups.onUpdated.addListener(async (group) => {
+  if (isSyncingTabGroups) return
+  try {
+    const arcState = await getArcState()
+    const space = arcState.spaces.find(
+      (s) => s.chromeGroupId === group.id || doesGroupMatchSpace(group, s)
+    )
+    if (!space) return
+
+    let changed = false
+    if (space.chromeGroupId !== group.id) {
+      space.chromeGroupId = group.id
+      changed = true
+    }
+
+    const rawTitle = (group.title || "").trim()
+    if (rawTitle && rawTitle !== formatSpaceGroupTitle(space)) {
+      const emojiMatch = rawTitle.match(/^(\p{Extended_Pictographic})\s*(.+)$/u)
+      if (emojiMatch) {
+        space.icon = emojiMatch[1]
+        space.name = emojiMatch[2].trim()
+      } else {
+        space.name = rawTitle
+      }
+      changed = true
+    }
+
+    const expectedColor = hueToChromeGroupColor(space.theme?.hue)
+    if (group.color && group.color !== expectedColor) {
+      const hues = chromeGroupColorToHue(group.color)
+      space.theme = {
+        ...space.theme,
+        hue: hues.hue,
+        accentHue: hues.accentHue
+      }
+      changed = true
+    }
+
+    if (changed) {
+      await saveArcState(arcState)
+    }
+  } catch (err) {
+    console.error("Error syncing native tabGroup update to Space:", err)
   }
 })
 
@@ -470,6 +772,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
           subtitle: cleanUrl
         })
       }
+    } else if (info.menuItemId === "arc-toggle-tabless") {
+      await toggleTablessWindow()
     } else if (info.menuItemId === "arc-toggle-chromeless") {
       await toggleChromelessMode()
     }
@@ -535,7 +839,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 })
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   ;(async () => {
     try {
       switch (message?.type) {
@@ -544,9 +848,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const currentWindow = await chrome.windows.getLastFocused({
             populate: true
           })
+          // If inside a single-tab Tabless Window (popup), include all open tabs across windows
           const tabs =
-            currentWindow?.tabs ||
-            (await chrome.tabs.query({ currentWindow: true }))
+            currentWindow?.type === "popup"
+              ? await chrome.tabs.query({})
+              : currentWindow?.tabs ||
+                (await chrome.tabs.query({ currentWindow: true }))
           let groups: chrome.tabGroups.TabGroup[] = []
           try {
             groups = await chrome.tabGroups.query({
@@ -560,12 +867,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             arcState,
             tabs,
             groups,
-            windowState: currentWindow?.state || "normal"
+            windowState: currentWindow?.state || "normal",
+            windowType: currentWindow?.type || "normal"
           })
           break
         }
 
         case "ACTIVATE_TAB": {
+          // If user clicked a tab from inside a Tabless Window (`type: "popup"`),
+          // swap the URL with the clicked background tab so they stay in the Tabless Window!
+          if (sender.tab?.windowId && sender.tab.id) {
+            const senderWin = await chrome.windows.get(sender.tab.windowId)
+            if (senderWin.type === "popup" && sender.tab.id !== message.tabId) {
+              const clickedTab = await chrome.tabs.get(message.tabId)
+              if (clickedTab?.url) {
+                const prevUrl = sender.tab.url
+                const targetUrl = clickedTab.url
+                if (prevUrl && !prevUrl.startsWith("chrome://newtab")) {
+                  await chrome.tabs.update(clickedTab.id!, { url: prevUrl })
+                }
+                await chrome.tabs.update(sender.tab.id, { url: targetUrl })
+                sendResponse({ ok: true })
+                break
+              }
+            }
+          }
+
           const tab = await chrome.tabs.update(message.tabId, { active: true })
           if (tab?.windowId) {
             await chrome.windows.update(tab.windowId, { focused: true })
@@ -585,6 +912,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           const targetUrl = message.rawQuery
             ? resolveInputToUrl(message.rawQuery)
             : message.url || "chrome://newtab"
+
+          // If inside a Tabless popup window, preserve current page in background and navigate popup
+          if (sender.tab?.windowId && sender.tab.id) {
+            const senderWin = await chrome.windows.get(sender.tab.windowId)
+            if (senderWin.type === "popup") {
+              const allNormalWins = await chrome.windows.getAll({
+                windowTypes: ["normal"]
+              })
+              if (
+                allNormalWins[0]?.id &&
+                sender.tab.url &&
+                !sender.tab.url.startsWith("chrome://newtab")
+              ) {
+                const bgTab = await chrome.tabs.create({
+                  windowId: allNormalWins[0].id,
+                  url: sender.tab.url,
+                  active: false
+                })
+                if (bgTab.id) {
+                  arcState.tabSpaceMap[bgTab.id] =
+                    message.spaceId || arcState.activeSpaceId
+                }
+              }
+              const updated = await chrome.tabs.update(sender.tab.id, {
+                url: targetUrl
+              })
+              await saveArcState(arcState)
+              sendResponse({ ok: true, tab: updated })
+              break
+            }
+          }
+
           const newTab = await chrome.tabs.create({
             url: targetUrl,
             active: message.active !== false
@@ -648,12 +1007,50 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break
         }
 
+        case "TOGGLE_TABLESS_WINDOW": {
+          const res = await toggleTablessWindow()
+          sendResponse({ ok: true, ...res })
+          break
+        }
+
         case "SET_COLLAPSE_NATIVE_TABS": {
           const arcState = await getArcState()
           arcState.collapseNativeTabs = Boolean(message.enabled)
           await saveArcState(arcState)
-          await syncCollapsedNativeTabStrip()
-          sendResponse({ ok: true, collapseNativeTabs: arcState.collapseNativeTabs })
+          await syncSpacesWithNativeTabGroups()
+          sendResponse({
+            ok: true,
+            collapseNativeTabs: arcState.collapseNativeTabs
+          })
+          break
+        }
+
+        case "SYNC_SPACE_TAB_GROUPS": {
+          await syncSpacesWithNativeTabGroups({
+            materializeMissingSpaces: Boolean(message.materializeMissingSpaces)
+          })
+          sendResponse({ ok: true })
+          break
+        }
+
+        case "DELETE_SPACE_TAB_GROUP": {
+          if (typeof message.groupId === "number") {
+            try {
+              const groupTabs = await chrome.tabs.query({
+                groupId: message.groupId
+              })
+              const ids = groupTabs
+                .map((t) => t.id)
+                .filter((id): id is number => typeof id === "number")
+              if (ids.length > 0) {
+                await chrome.tabs.ungroup(ids)
+              }
+            } catch {
+              // Group may already be gone
+            }
+          }
+          await syncSpacesWithNativeTabGroups()
+          sendResponse({ ok: true })
           break
         }
 
@@ -663,15 +1060,44 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             currentWindow: true
           })
           const result = await pinTabToActiveSpace(activeTab)
+          await syncSpacesWithNativeTabGroups()
           sendResponse({ ok: true, ...result })
           break
         }
 
         case "SWITCH_SPACE": {
           const arcState = await getArcState()
-          if (arcState.spaces.some((s) => s.id === message.spaceId)) {
-            arcState.activeSpaceId = message.spaceId
+          const targetSpace = arcState.spaces.find(
+            (s) => s.id === message.spaceId
+          )
+          if (targetSpace) {
+            arcState.activeSpaceId = targetSpace.id
             await saveArcState(arcState)
+            await syncSpacesWithNativeTabGroups()
+
+            if (message.activateSpaceTab !== false) {
+              const currentWindow = await chrome.windows.getLastFocused({
+                populate: true
+              })
+              const candidateTabs = (currentWindow?.tabs || []).filter(
+                (t) =>
+                  t.id &&
+                  (arcState.tabSpaceMap[t.id] === targetSpace.id ||
+                    (targetSpace.chromeGroupId &&
+                      t.groupId === targetSpace.chromeGroupId))
+              )
+              if (candidateTabs.length > 0) {
+                candidateTabs.sort(
+                  (a, b) =>
+                    (arcState.tabLastActive[b.id!] || 0) -
+                    (arcState.tabLastActive[a.id!] || 0)
+                )
+                const bestTab = candidateTabs[0]
+                if (bestTab?.id && !bestTab.active) {
+                  await chrome.tabs.update(bestTab.id, { active: true })
+                }
+              }
+            }
           }
           sendResponse({ ok: true, activeSpaceId: arcState.activeSpaceId })
           break

@@ -6,12 +6,16 @@ interface TopBarProps {
   activeTab: chrome.tabs.Tab | null
   activeSpace: ArcSpace
   filterQuery: string
+  collapseNativeTabs: boolean
+  isTablessWindow: boolean
   isChromeless: boolean
   onFilterChange: (q: string) => void
   onOpenCommandBar: () => void
   onNavigateOmnibox: (input: string, newTab: boolean) => Promise<void>
   onCopyCleanUrl: () => void
   onPinActiveTab: () => void
+  onToggleCollapseNativeTabs: () => Promise<void>
+  onToggleTablessWindow: () => Promise<void>
   onToggleChromelessMode: () => Promise<void>
   onOpenArchive: () => void
 }
@@ -20,12 +24,16 @@ export function TopBar({
   activeTab,
   activeSpace,
   filterQuery,
+  collapseNativeTabs,
+  isTablessWindow,
   isChromeless,
   onFilterChange,
   onOpenCommandBar,
   onNavigateOmnibox,
   onCopyCleanUrl,
   onPinActiveTab,
+  onToggleCollapseNativeTabs,
+  onToggleTablessWindow,
   onToggleChromelessMode,
   onOpenArchive
 }: TopBarProps) {
@@ -264,6 +272,34 @@ export function TopBar({
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0 2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
+        </button>
+      </div>
+
+      {/* Prominent 1-Click Chrome UI Replacement & Hiding Bar */}
+      <div
+        className="chrome-mode-bar"
+        role="group"
+        aria-label="Hide Chrome UI Controls">
+        <button
+          type="button"
+          className={`mode-pill-btn ${collapseNativeTabs ? "is-active" : ""}`}
+          title="Default ON: Represents each Space (🌿 Personal, ⚡ Work, 🔭 Research) as a Native Chrome Tab Group and auto-collapses inactive Spaces in Chrome's top strip"
+          onClick={onToggleCollapseNativeTabs}>
+          <span>{collapseNativeTabs ? "✓" : "○"} Collapse Top Tabs</span>
+        </button>
+        <button
+          type="button"
+          className={`mode-pill-btn ${isTablessWindow ? "is-active" : ""}`}
+          title="Opens a desktop window with NO Chrome horizontal tab strip and NO Chrome URL bar (uses docked left Arc sidebar)"
+          onClick={onToggleTablessWindow}>
+          <span>❐ {isTablessWindow ? "Normal Win" : "Tabless Win"}</span>
+        </button>
+        <button
+          type="button"
+          className={`mode-pill-btn ${isChromeless ? "is-active" : ""}`}
+          title="Toggles edge-to-edge Fullscreen Chromeless Mode with docked left Arc sidebar"
+          onClick={onToggleChromelessMode}>
+          <span>⛶ Fullscreen</span>
         </button>
       </div>
 

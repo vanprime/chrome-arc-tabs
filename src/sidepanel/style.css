@@ -248,6 +248,44 @@
     background-color: var(--glass-pill);
   }
 
+  .chrome-mode-bar {
+    display: grid;
+    grid-template-columns: 1.25fr 1fr 0.95fr;
+    gap: 4px;
+    padding-inline: 1px;
+  }
+
+  .mode-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    block-size: 24px;
+    padding-inline: 6px;
+    border-radius: 6px;
+    background-color: var(--glass-pill);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    font-size: 10.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mode-pill-btn:hover {
+    background-color: var(--glass-active);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+
+  .mode-pill-btn.is-active {
+    background-color: var(--glass-active);
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-active);
+  }
+
   .arc-search-region {
     display: flex;
     flex-direction: column;
@@ -421,12 +459,13 @@
   }
 
   .top-space-tile {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 4px;
-    min-block-size: 54px;
+    min-block-size: 56px;
     padding-block: 6px;
     padding-inline: 6px;
     border-radius: var(--radius-md);
@@ -435,6 +474,32 @@
     color: var(--text-secondary);
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
     text-align: center;
+  }
+
+  .top-space-group-pill {
+    position: absolute;
+    inset-block-start: 4px;
+    inset-inline-end: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding-inline: 3px;
+    border-radius: 99px;
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .top-space-group-dot {
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 99px;
+    background-color: var(--group-color, var(--accent-primary));
+    box-shadow: 0 0 4px var(--group-color, transparent);
+  }
+
+  .top-space-group-count {
+    line-height: 1;
   }
 
   .top-space-tile:hover {

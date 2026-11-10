@@ -36,6 +36,7 @@ export interface ArcSpace {
   domainRules: string[]
   folders: ArcFolder[]
   pinnedTabs: ArcPinnedTab[]
+  chromeGroupId?: number | null
 }
 
 export interface ArcSplitPair {
@@ -56,6 +57,7 @@ export interface ArcArchiveEntry {
 }
 
 export interface ArcState {
+  stateVersion: number
   activeSpaceId: string
   viewAllSpacesTabs: boolean
   autoArchiveHours: number
