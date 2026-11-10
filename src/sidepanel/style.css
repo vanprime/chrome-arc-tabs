@@ -38,7 +38,7 @@
     /* MANDATORY: Automatically adapt native UI to user system preferences */
     color-scheme: light dark;
 
-    /* Dynamic Space Theme Variables (Updated per Space via JS) */
+    /* Dynamic Space Theme Variables (Updated per Space via React) */
     --space-hue: 256;
     --space-accent-hue: 318;
     --space-sat: 74%;
@@ -205,7 +205,6 @@
     position: relative;
   }
 
-  /* Topbar Navigation & URL Command Pill */
   .arc-topbar {
     display: flex;
     flex-direction: column;
@@ -345,7 +344,6 @@
     border-radius: 4px;
   }
 
-  /* Scrollable Container */
   .arc-main-scroll {
     flex: 1;
     overflow-y: auto;
@@ -358,7 +356,6 @@
     scrollbar-width: thin;
   }
 
-  /* Favorites Grid (Arc Top Tiles) */
   .arc-favorites-section {
     flex-shrink: 0;
   }
@@ -397,7 +394,7 @@
     content: "";
     position: absolute;
     inset-block-end: 3px;
-     inline-size: 4px;
+    inline-size: 4px;
     block-size: 4px;
     border-radius: 99px;
     background-color: var(--accent-primary);
@@ -420,7 +417,6 @@
     background-color: var(--accent-primary);
   }
 
-  /* Active Space Header */
   .arc-space-header-section {
     padding-inline: 4px;
     padding-block-start: 2px;
@@ -488,7 +484,6 @@
     color: var(--text-primary);
   }
 
-  /* Folders & Pinned Tabs */
   .arc-pinned-section {
     display: flex;
     flex-direction: column;
@@ -592,7 +587,6 @@
     text-align: center;
   }
 
-  /* Tab Rows (Shared by Pinned and Today Tabs) */
   .tab-list {
     display: flex;
     flex-direction: column;
@@ -681,7 +675,6 @@
     color: var(--text-muted);
   }
 
-  /* Hover/Focus Actions inside a Tab Row (Accessible on hover, focus-within, and hover: none) */
   .tab-row-actions {
     display: flex;
     align-items: center;
@@ -720,7 +713,6 @@
     color: var(--text-primary);
   }
 
-  /* Split View Dual Tab Row */
   .split-pair-row {
     display: grid;
     grid-template-columns: 1fr auto 1fr auto;
@@ -757,7 +749,6 @@
     background-color: var(--border-strong);
   }
 
-  /* Arc Horizontal Divider + Today Header */
   .arc-divider-bar {
     display: flex;
     align-items: center;
@@ -840,7 +831,6 @@
     color: var(--accent-primary);
   }
 
-  /* "+ New Tab" Button */
   .arc-new-tab-btn {
     display: flex;
     align-items: center;
@@ -873,7 +863,6 @@
     font-size: 12.5px;
   }
 
-  /* Tidy Domain Group Cards in Today */
   .tidy-groups-container {
     display: flex;
     flex-direction: column;
@@ -898,14 +887,12 @@
     color: var(--text-secondary);
   }
 
-  /* Drag and Drop Target Visuals */
   .is-drag-over {
     outline: 2px dashed var(--accent-primary);
     outline-offset: -2px;
     background-color: var(--glass-hover);
   }
 
-  /* Live Audio Mini Media Bar */
   .arc-media-bar {
     display: flex;
     align-items: center;
@@ -926,6 +913,7 @@
     flex: 1;
     min-inline-size: 0;
     cursor: pointer;
+    text-align: start;
   }
 
   .media-favicon {
@@ -982,7 +970,6 @@
     to { transform: scaleY(1); }
   }
 
-  /* Sidebar Toast Notification */
   .sidebar-toast {
     position: absolute;
     inset-inline: 12px;
@@ -999,7 +986,6 @@
     z-index: 40;
   }
 
-  /* Bottom Space Switcher Dock */
   .arc-footer {
     display: flex;
     align-items: center;
@@ -1079,7 +1065,6 @@
     color: var(--text-primary);
   }
 
-  /* Native Popovers (Settings & Context Menu) */
   .arc-popover {
     inset: auto;
     margin: 0;
@@ -1211,7 +1196,6 @@
     color: #ef4444;
   }
 
-  /* Native Modal Dialogs */
   /* MANDATORY (both rules): without them, scrolling over the backdrop or inside the dialog scrolls the page behind it */
   dialog:modal {
     overscroll-behavior: contain;
@@ -1274,7 +1258,6 @@
     color: var(--text-primary);
   }
 
-  /* Command Bar Modal Content */
   .command-header {
     display: flex;
     align-items: center;
@@ -1356,7 +1339,6 @@
     flex-shrink: 0;
   }
 
-  /* Forms & Theme Swatches */
   .form-grid {
     display: flex;
     flex-direction: column;

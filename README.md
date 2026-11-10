@@ -1,14 +1,34 @@
-# Arc Vertical Sidebar for Chrome
+# Arc Vertical Sidebar for Chrome (Plasmo + React + TypeScript)
 
-A native Manifest V3 Chrome Extension that brings **Arc Browser's Vertical Sidebar** workflow to Google Chrome — complete with **Spaces**, **Atmospheric Mesh Themes**, **Top Favorites Tiles**, **Persistent Pinned Tabs & Folders**, **Today Tabs with Smart Tidy & Auto-Archive**, **Split View Pairing**, **Live Audio Controller**, **Command Bar (`⌘K`)**, and an **In-Page Left-Edge Peek Sidebar**.
+A native Manifest V3 Chrome Extension built with **[Plasmo](https://docs.plasmo.com/)**, **React 18**, and **TypeScript** that brings **Arc Browser's Vertical Sidebar** workflow to Google Chrome — complete with **Spaces**, **Atmospheric Mesh Themes**, **Top Favorites Tiles**, **Persistent Pinned Tabs & Folders**, **Today Tabs with Smart Tidy & Auto-Archive**, **Split View Pairing**, **Live Audio Controller**, **Command Bar (`⌘K`)**, and an **In-Page Left-Edge Peek Sidebar**.
 
 ---
 
-## Quick Setup (Developer Mode / Unpacked Extension)
+## Development & Build Commands
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start live-reload development server (outputs to build/chrome-mv3-dev)
+pnpm dev
+
+# Build optimized unpacked extension (outputs to build/chrome-mv3-prod)
+pnpm build
+
+# Run TypeScript typechecking
+pnpm typecheck
+```
+
+---
+
+## Loading in Chrome (Developer Mode)
 
 1. Open Chrome and navigate to `chrome://extensions`.
 2. Enable **Developer mode** (toggle in the top-right corner).
-3. Click **Load unpacked** and select this repository folder (`/Users/dustin/www/chrome-arc-tabs`).
+3. Click **Load unpacked** and select:
+   - `/Users/dustin/www/chrome-arc-tabs/build/chrome-mv3-prod` (after running `pnpm build`), **or**
+   - `/Users/dustin/www/chrome-arc-tabs/build/chrome-mv3-dev` (while running `pnpm dev` for instant HMR).
 4. **Dock the Side Panel on the Left (Arc Layout)**:
    - Open `chrome://settings/appearance` in Chrome.
    - Under **Side panel**, select **Show on left side**.
@@ -16,36 +36,17 @@ A native Manifest V3 Chrome Extension that brings **Arc Browser's Vertical Sideb
 
 ---
 
-## Core Features
+## Project Architecture (`src/`)
 
-- **URL Pill & Navigation Bar**:
-  - Back, Forward, Reload, Pin/Unpin Current Tab (`⌥P`), and **Copy Clean URL (`⌘⇧C`)** which automatically strips `utm_*`, `fbclid`, `gclid`, and other tracking parameters.
-  - Clicking the URL Pill opens the **Arc Command Bar (`⌘K`)**.
-- **Favorites Bar (Top Grid)**:
-  - Global 4-column icon tile grid persisted across all Spaces with active-tab indicators, live audio dots, and drag-and-drop support.
-- **Spaces & Atmospheric Theme Studio**:
-  - Switch between Spaces (`Personal`, `Work`, `Research`, or create custom Spaces) from the bottom dock or with `⌥1`–`⌥6`.
-  - Customize each Space's **Primary & Secondary Mesh Gradient Hue**, **Icon**, **Name**, and **Domain Auto-Routing Rules** (e.g. automatically route `github.com` and `linear.app` tabs to your *Work* Space).
-- **Pinned Tabs & Collapsible Folders**:
-  - Pinned tabs persist even when closed. When a pinned tab navigates away from its root URL, click `↩` on hover to snap back to its pinned URL.
-  - Organize pins into nested **Folders** via drag-and-drop, or click **Sync Chrome Tab Groups** to import native Chrome Tab Groups.
-- **Today Tabs, Smart Tidy (`✨ Tidy`), & Auto-Archive**:
-  - **Smart Tidy** groups open Today tabs into clean domain/topic cards with one click.
-  - **Clear** moves inactive Today tabs into the **Archive & Recently Closed** drawer (`🕘`).
-  - **Auto-Archive** (`chrome.alarms`) automatically archives inactive unpinned tabs after 12h, 24h, or 3d.
-- **Arc Split View (`◫`)**:
-  - Pair any tab with your active tab into a unified dual-column `[ Tab A | Tab B ]` row in the sidebar.
-- **In-Page Left-Edge Hover Peek & Command Bar**:
-  - Even when Chrome's native Side Panel is closed, hovering the left 5px edge of any webpage slides out the Shadow DOM **Arc Peek Sidebar**, and pressing `⌘⇧K` (`Alt+K`) opens the centered **In-Page Arc Command Bar**.
-
----
-
-## Keyboard Shortcuts
-
-| Action | macOS | Windows / Linux |
-| :--- | :--- | :--- |
-| Toggle Arc Vertical Sidebar | `⌘ + Shift + S` | `Alt + S` |
-| Open Arc Command Bar | `⌘ + Shift + K` (or `⌘K` / `⌘T` in sidebar) | `Alt + K` |
-| Pin / Unpin Active Tab | `Alt + P` | `Alt + P` |
-| Copy Clean URL (Arc Style) | `⌘ + Shift + C` | `Alt + C` |
-| Switch Spaces `1`–`6` (in sidebar) | `Alt + 1` … `Alt + 6` | `Alt + 1` … `Alt + 6` |
+- `src/background/index.ts` — Stateless Manifest V3 Service Worker (`chrome.sidePanel.setPanelBehavior`, tab-to-Space domain routing, context menus, `chrome.alarms` auto-archive, and message hub).
+- `src/sidepanel/index.tsx` & `src/sidepanel/style.css` — Main Side Panel React entrypoint and CSS Cascade Layer (`@layer`) design system.
+- `src/contents/arc-overlay.tsx` — Plasmo Content Script UI (CSUI) rendered inside an isolated Shadow DOM for the in-page **Left-Edge Hover Peek Sidebar**, **In-Page Command Bar (`⌘⇧K`)**, and **Arc Toast Notifications**.
+- `src/components/` — Modular React components:
+  - `TopBar.tsx` — Navigation toolbar, Pin/Copy actions, `⌘K` URL Pill, and inline `<search>` tab filter.
+  - `FavoritesGrid.tsx` — Top 4-column squircle Favorites grid with drag-and-drop and live indicators.
+  - `PinnedSection.tsx` — Space Header, collapsible Folders, Chrome Tab Group sync, and Pinned Tabs with drifted-URL reset (`↩`).
+  - `TodaySection.tsx` — Arc Divider (`Today`, count badge, `Space`/`All` scope toggle, `✨ Tidy`, `Clear`), `+ New Tab` button, Split View rows, and Today Tab list.
+  - `MediaBar.tsx` — Floating live audio mini-player when any tab is playing sound.
+  - `SpacesFooter.tsx` — Bottom Space Switcher dock, Archive trigger, and Settings popover.
+  - `modals/` — Native `<dialog closedby="any">` modals (`CommandDialog.tsx`, `SpaceDialog.tsx`, `ArchiveDialog.tsx`, `FolderDialog.tsx`).
+- `src/types/arc.ts`, `src/lib/storage.ts`, & `src/lib/url-utils.ts` — Shared TypeScript interfaces, `chrome.storage.local` persistence helpers, and URL/favicon utilities.

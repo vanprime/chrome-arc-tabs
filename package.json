@@ -1,0 +1,82 @@
+{
+  "name": "chrome-arc-tabs",
+  "displayName": "Arc Vertical Sidebar",
+  "version": "1.0.0",
+  "description": "Brings Arc's Vertical Sidebar to Chrome with Spaces, Favorites, Pinned Tabs, Folders, Command Bar, Auto-Archive, and Split View.",
+  "author": "Personal",
+  "packageManager": "pnpm@11.0.4",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "plasmo": "^0.90.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@swc/core",
+      "esbuild",
+      "lmdb",
+      "msgpackr-extract",
+      "sharp"
+    ]
+  },
+  "manifest": {
+    "action": {
+      "default_title": "Open Arc Vertical Sidebar"
+    },
+    "permissions": [
+      "sidePanel",
+      "tabs",
+      "tabGroups",
+      "storage",
+      "favicon",
+      "sessions",
+      "bookmarks",
+      "contextMenus",
+      "alarms"
+    ],
+    "commands": {
+      "_execute_action": {
+        "suggested_key": {
+          "default": "Alt+S",
+          "mac": "Command+Shift+S"
+        },
+        "description": "Toggle Arc Vertical Sidebar"
+      },
+      "open-command-bar": {
+        "suggested_key": {
+          "default": "Alt+K",
+          "mac": "Command+Shift+K"
+        },
+        "description": "Open Arc Command Bar"
+      },
+      "pin-current-tab": {
+        "suggested_key": {
+          "default": "Alt+P",
+          "mac": "Alt+P"
+        },
+        "description": "Pin or Unpin Current Tab in Active Space"
+      },
+      "copy-current-url": {
+        "suggested_key": {
+          "default": "Alt+C",
+          "mac": "Command+Shift+C"
+        },
+        "description": "Copy Current Tab Clean URL (Arc Style)"
+      }
+    }
+  }
+}
