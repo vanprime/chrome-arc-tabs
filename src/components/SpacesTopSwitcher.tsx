@@ -16,6 +16,7 @@ interface SpacesTopSwitcherProps {
   onSyncNativeGroups: () => Promise<void>
   onOpenCreateSpace: () => void
   onOpenEditSpace: () => void
+  onOpenArcImport: () => void
   onOpenContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void
 }
 
@@ -29,6 +30,7 @@ export function SpacesTopSwitcher({
   onSyncNativeGroups,
   onOpenCreateSpace,
   onOpenEditSpace,
+  onOpenArcImport,
   onOpenContextMenu
 }: SpacesTopSwitcherProps) {
   const [dragOverSpaceId, setDragOverSpaceId] = useState<string | null>(null)
@@ -83,6 +85,10 @@ export function SpacesTopSwitcher({
                   {
                     label: "Create New Space (Native Tab Group)...",
                     action: () => onOpenCreateSpace()
+                  },
+                  {
+                    label: "🌈 Import from Arc Browser...",
+                    action: () => onOpenArcImport()
                   }
                 ])
               }}

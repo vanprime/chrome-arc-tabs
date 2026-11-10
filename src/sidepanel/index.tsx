@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react"
 import { MediaBar } from "~components/MediaBar"
+import { ArcImportDialog } from "~components/modals/ArcImportDialog"
 import { ArchiveDialog } from "~components/modals/ArchiveDialog"
 import { CommandDialog } from "~components/modals/CommandDialog"
 import { FolderDialog } from "~components/modals/FolderDialog"
@@ -42,6 +43,7 @@ export default function ArcSidePanel() {
   // Modal states
   const [isCommandOpen, setIsCommandOpen] = useState(false)
   const [isTidyDialogOpen, setIsTidyDialogOpen] = useState(false)
+  const [isArcImportOpen, setIsArcImportOpen] = useState(false)
   const [spaceModalState, setSpaceModalState] = useState<{
     open: boolean
     isNew: boolean
@@ -611,6 +613,7 @@ export default function ArcSidePanel() {
           onOpenEditSpace={() =>
             setSpaceModalState({ open: true, isNew: false })
           }
+          onOpenArcImport={() => setIsArcImportOpen(true)}
           onOpenContextMenu={openCustomContextMenu}
         />
 
@@ -964,6 +967,19 @@ export default function ArcSidePanel() {
         <button
           type="button"
           className="popover-action-item"
+          onClick={() => {
+            const pop = document.getElementById("settings-popover") as any
+            if (pop && typeof pop.hidePopover === "function") {
+              pop.hidePopover()
+            }
+            setIsArcImportOpen(true)
+          }}>
+          <span>🌈 Import from Arc Browser...</span>
+        </button>
+
+        <button
+          type="button"
+          className="popover-action-item"
           onClick={importBookmarksBar}>
           <span>🔖 Import Bookmarks Bar to Folder</span>
         </button>
@@ -1038,6 +1054,88 @@ export default function ArcSidePanel() {
           })
           showToast(
             `Saved ${rules.length} Tidy categor${rules.length === 1 ? "y" : "ies"} (Persisted Locally)`
+          )
+        }}
+      />
+
+      <ArcImportDialog
+        isOpen={isArcImportOpen}
+        onClose={() => setIsArcImportOpen(false)}
+        onCopyPath={async (path) => {
+          try {
+            await navigator.clipboard.writeText(path)
+            showToast("Copied Arc Sidebar file path to Clipboard")
+          } catch {
+            showToast("Failed to copy path")
+          }
+        }}
+        onConfirmImport={async ({ spaces: importedSpaces, mode }) => {
+          let importedPinCount = 0
+          for (const sp of importedSpaces) {
+            importedPinCount += sp.pinnedTabs.length
+          }
+
+          await updateAndPersistState((draft) => {
+            if (mode === "replace") {
+              draft.spaces = importedSpaces
+              draft.activeSpaceId = importedSpaces[0]?.id || draft.activeSpaceId
+              return
+            }
+
+            // Merge mode: match existing Spaces by name or append new ones
+            for (const impSp of importedSpaces) {
+              const match = draft.spaces.find(
+                (existing) =>
+                  existing.name.trim().toLowerCase() ===
+                  impSp.name.trim().toLowerCase()
+              )
+              if (!match) {
+                draft.spaces.push(impSp)
+                continue
+              }
+
+              // Map folder IDs so pins land in matching folder names
+              const folderIdMap = new Map<string, string>()
+              for (const impFolder of impSp.folders) {
+                const existingFolder = match.folders.find(
+                  (ef) =>
+                    ef.name.trim().toLowerCase() ===
+                    impFolder.name.trim().toLowerCase()
+                )
+                if (existingFolder) {
+                  folderIdMap.set(impFolder.id, existingFolder.id)
+                } else {
+                  match.folders.push(impFolder)
+                  folderIdMap.set(impFolder.id, impFolder.id)
+                }
+              }
+
+              for (const impPin of impSp.pinnedTabs) {
+                const mappedFolderId = impPin.folderId
+                  ? folderIdMap.get(impPin.folderId) || impPin.folderId
+                  : null
+                const alreadyExists = match.pinnedTabs.some(
+                  (ep) =>
+                    ep.folderId === mappedFolderId &&
+                    urlsRoughlyMatch(ep.url, impPin.url)
+                )
+                if (!alreadyExists) {
+                  match.pinnedTabs.push({
+                    ...impPin,
+                    folderId: mappedFolderId
+                  })
+                }
+              }
+            }
+          })
+
+          await chrome.runtime.sendMessage({
+            type: "SYNC_SPACE_TAB_GROUPS",
+            materializeMissingSpaces: true
+          })
+          await refreshSnapshot()
+          showToast(
+            `Imported ${importedSpaces.length} Space${importedSpaces.length === 1 ? "" : "s"} & ${importedPinCount} Pinned Tab${importedPinCount === 1 ? "" : "s"} from Arc`
           )
         }}
       />
