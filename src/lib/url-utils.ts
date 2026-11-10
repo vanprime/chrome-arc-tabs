@@ -1,4 +1,5 @@
-import type { ArcSpace } from "~types/arc"
+import { DEFAULT_TIDY_RULES } from "~lib/storage"
+import type { ArcSpace, ArcTidyRule } from "~types/arc"
 
 export const DEFAULT_FALLBACK_ICON =
   "data:image/svg+xml;utf8," +
@@ -103,29 +104,41 @@ export function matchSpaceByDomain(
   return null
 }
 
-export function categorizeTabDomain(url?: string): string {
+export function categorizeTabDomain(
+  url?: string,
+  title?: string,
+  customRules?: ArcTidyRule[],
+  fallbackByDomain = true
+): string {
   const host = formatCleanDomain(url).toLowerCase()
-  if (
-    /github|gitlab|stackoverflow|localhost|vercel|netlify|linear|jira/.test(
-      host
-    )
-  ) {
-    return "⚡ Engineering & Dev"
+  const haystackUrl = (url || "").toLowerCase()
+  const haystackTitle = (title || "").toLowerCase()
+  const rules =
+    Array.isArray(customRules) && customRules.length > 0
+      ? customRules
+      : DEFAULT_TIDY_RULES
+
+  for (const rule of rules) {
+    if (!Array.isArray(rule.keywords)) continue
+    for (const rawKw of rule.keywords) {
+      const kw = rawKw.trim().toLowerCase()
+      if (!kw) continue
+      if (
+        host.includes(kw) ||
+        haystackUrl.includes(kw) ||
+        haystackTitle.includes(kw)
+      ) {
+        const icon = (rule.icon || "✨").trim()
+        const name = (rule.name || "Category").trim()
+        return icon ? `${icon} ${name}` : name
+      }
+    }
   }
-  if (/docs|wikipedia|arxiv|developer|mdn|notion|medium|substack/.test(host)) {
-    return "📚 Docs & Knowledge"
+
+  if (fallbackByDomain) {
+    return `🌐 ${host || "General"}`
   }
-  if (/youtube|spotify|netflix|twitch|soundcloud|vimeo/.test(host)) {
-    return "🎧 Media & Video"
-  }
-  if (
-    /mail|slack|discord|x\.com|twitter|reddit|linkedin|news\.ycombinator/.test(
-      host
-    )
-  ) {
-    return "💬 Social & Comms"
-  }
-  return `🌐 ${host || "General"}`
+  return "🗂️ Other Tabs"
 }
 
 export function hueToChromeGroupColor(

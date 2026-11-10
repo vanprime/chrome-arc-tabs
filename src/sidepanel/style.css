@@ -299,7 +299,7 @@
     inline-size: 100%;
   }
 
-  .arc-url-pill {
+  .arc-filter-pill {
     display: flex;
     align-items: center;
     gap: 7px;
@@ -309,15 +309,21 @@
     padding-inline: 10px;
     border-radius: var(--radius-md);
     background-color: var(--glass-pill);
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--border-strong);
     color: var(--text-primary);
-    text-align: start;
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.14);
+    transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
   }
 
-  .arc-url-pill:hover {
+  .arc-filter-pill:hover {
     background-color: var(--glass-active);
-    border-color: var(--border-strong);
+  }
+
+  .arc-filter-pill:has(.sidebar-filter-input:focus-visible),
+  .arc-filter-pill:has(.sidebar-filter-input:not(:placeholder-shown)) {
+    background-color: var(--glass-active);
+    border-color: var(--accent-primary);
+    box-shadow: var(--shadow-active);
   }
 
   .cmd-trigger-chip {
@@ -453,7 +459,7 @@
 
   .top-spaces-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)) 32px;
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
     gap: 6px;
     align-items: stretch;
   }
@@ -465,6 +471,7 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
+    min-inline-size: 0;
     min-block-size: 56px;
     padding-block: 6px;
     padding-inline: 6px;
@@ -537,6 +544,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    min-inline-size: 0;
+    min-block-size: 56px;
     border-radius: var(--radius-md);
     background-color: var(--glass-pill);
     border: 1px dashed var(--border-strong);
@@ -811,8 +820,30 @@
   }
 
   .tab-row.is-discarded .tab-favicon,
-  .tab-row.is-discarded .tab-title {
-    opacity: 0.58;
+  .tab-row.is-discarded .tab-title,
+  .pinned-tab-row.is-closed-pin .tab-favicon,
+  .pinned-tab-row.is-closed-pin .tab-title {
+    opacity: 0.52;
+  }
+
+  .pinned-tab-row.is-closed-pin:hover .tab-favicon,
+  .pinned-tab-row.is-closed-pin:hover .tab-title {
+    opacity: 0.85;
+  }
+
+  .pin-saved-badge {
+    font-size: 9.5px;
+    font-weight: 600;
+    padding-inline: 5px;
+    padding-block: 1px;
+    border-radius: 4px;
+    background-color: var(--border-subtle);
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .pinned-tab-row.is-closed-pin:hover .pin-saved-badge {
+    display: none;
   }
 
   .tab-main-click {
@@ -1018,7 +1049,28 @@
     color: var(--text-primary);
   }
 
+  .tidy-action-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    border-radius: 6px;
+  }
+
   .tidy-btn {
+    color: var(--accent-primary);
+  }
+
+  .tidy-btn.is-active {
+    background-color: var(--glass-active);
+    box-shadow: var(--shadow-active);
+  }
+
+  .tidy-config-btn {
+    padding-inline: 4px;
+    color: var(--text-muted);
+  }
+
+  .tidy-config-btn:hover {
     color: var(--accent-primary);
   }
 
@@ -1650,6 +1702,97 @@
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  .tidy-modal {
+    inline-size: min(375px, calc(100vw - 14px));
+  }
+
+  .tidy-privacy-note {
+    font-size: 11px;
+    line-height: 1.4;
+    padding: 7px 9px;
+    border-radius: var(--radius-sm);
+    background-color: var(--glass-pill);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+  }
+
+  .tidy-rules-scroll {
+    overflow-y: auto;
+    max-block-size: 270px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding-inline-end: 2px;
+  }
+
+  .tidy-rule-card {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 7px;
+    border-radius: var(--radius-md);
+    background-color: var(--glass-pill);
+    border: 1px solid var(--border-subtle);
+  }
+
+  .tidy-rule-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .tidy-icon-input {
+    inline-size: 42px;
+    block-size: 28px;
+    padding-inline: 4px;
+    text-align: center;
+    font-size: 14px;
+  }
+
+  .tidy-rule-top .arc-input.flex-1 {
+    block-size: 28px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .tidy-keywords-input {
+    block-size: 27px;
+    font-size: 11.5px;
+  }
+
+  .tidy-delete-rule-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 24px;
+    block-size: 24px;
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .tidy-delete-rule-btn:hover {
+    background-color: rgb(239 68 68 / 0.14);
+    color: #ef4444;
+  }
+
+  .tidy-config-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tidy-add-rule-btn {
+    inline-size: 100%;
+    text-align: center;
+  }
+
+  .tidy-fallback-toggle {
+    background-color: var(--glass-pill);
+    border: 1px solid var(--border-subtle);
   }
 }
 

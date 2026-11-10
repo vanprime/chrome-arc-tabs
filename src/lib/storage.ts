@@ -1,6 +1,60 @@
-import type { ArcState } from "~types/arc"
+import type { ArcState, ArcTidyRule } from "~types/arc"
 
-export const CURRENT_STATE_VERSION = 3
+export const CURRENT_STATE_VERSION = 4
+
+export const DEFAULT_TIDY_RULES: ArcTidyRule[] = [
+  {
+    id: "tidy-dev",
+    name: "Engineering & Dev",
+    icon: "⚡",
+    keywords: [
+      "github",
+      "gitlab",
+      "stackoverflow",
+      "localhost",
+      "vercel",
+      "netlify",
+      "linear",
+      "jira"
+    ]
+  },
+  {
+    id: "tidy-docs",
+    name: "Docs & Knowledge",
+    icon: "📚",
+    keywords: [
+      "docs",
+      "wikipedia",
+      "arxiv",
+      "developer",
+      "mdn",
+      "notion",
+      "medium",
+      "substack"
+    ]
+  },
+  {
+    id: "tidy-media",
+    name: "Media & Video",
+    icon: "🎧",
+    keywords: ["youtube", "spotify", "netflix", "twitch", "soundcloud", "vimeo"]
+  },
+  {
+    id: "tidy-social",
+    name: "Social & Comms",
+    icon: "💬",
+    keywords: [
+      "mail",
+      "slack",
+      "discord",
+      "x.com",
+      "twitter",
+      "reddit",
+      "linkedin",
+      "news.ycombinator"
+    ]
+  }
+]
 
 export const DEFAULT_ARC_STATE: ArcState = {
   stateVersion: CURRENT_STATE_VERSION,
@@ -11,32 +65,10 @@ export const DEFAULT_ARC_STATE: ArcState = {
   dockedSidebarMode: false,
   collapseNativeTabs: true,
   showFavoritesGrid: false,
-  favorites: [
-    {
-      id: "fav-github",
-      title: "GitHub",
-      url: "https://github.com",
-      favIconUrl: ""
-    },
-    {
-      id: "fav-google",
-      title: "Google Search",
-      url: "https://www.google.com",
-      favIconUrl: ""
-    },
-    {
-      id: "fav-youtube",
-      title: "YouTube",
-      url: "https://www.youtube.com",
-      favIconUrl: ""
-    },
-    {
-      id: "fav-hn",
-      title: "Hacker News",
-      url: "https://news.ycombinator.com",
-      favIconUrl: ""
-    }
-  ],
+  tidyGroupedMode: false,
+  tidyFallbackByDomain: true,
+  tidyRules: DEFAULT_TIDY_RULES,
+  favorites: [],
   spaces: [
     {
       id: "space-personal",
@@ -49,32 +81,8 @@ export const DEFAULT_ARC_STATE: ArcState = {
         style: "aurora"
       },
       domainRules: [],
-      folders: [
-        {
-          id: "folder-reading",
-          name: "Reading List",
-          collapsed: false,
-          color: "purple"
-        }
-      ],
-      pinnedTabs: [
-        {
-          id: "pin-wiki",
-          title: "Wikipedia",
-          url: "https://www.wikipedia.org",
-          favIconUrl: "",
-          folderId: "folder-reading",
-          linkedTabId: null
-        },
-        {
-          id: "pin-mdn",
-          title: "MDN Web Docs",
-          url: "https://developer.mozilla.org",
-          favIconUrl: "",
-          folderId: null,
-          linkedTabId: null
-        }
-      ]
+      folders: [],
+      pinnedTabs: []
     },
     {
       id: "space-work",
@@ -93,24 +101,8 @@ export const DEFAULT_ARC_STATE: ArcState = {
         "notion.so",
         "slack.com"
       ],
-      folders: [
-        {
-          id: "folder-dev",
-          name: "Engineering",
-          collapsed: false,
-          color: "blue"
-        }
-      ],
-      pinnedTabs: [
-        {
-          id: "pin-chrome-ext",
-          title: "Chrome Extensions Docs",
-          url: "https://developer.chrome.com/docs/extensions",
-          favIconUrl: "",
-          folderId: "folder-dev",
-          linkedTabId: null
-        }
-      ]
+      folders: [],
+      pinnedTabs: []
     },
     {
       id: "space-research",
@@ -162,9 +154,15 @@ export async function getArcState(): Promise<ArcState> {
         if (withIcon) spaceNameSet.add(withIcon)
       }
 
+      const demoFolderIds = new Set(["folder-reading", "folder-dev"])
+      const demoPinIds = new Set(["pin-wiki", "pin-mdn", "pin-chrome-ext"])
+
       for (const sp of rawSpaces) {
-        const removedFolderIds = new Set<string>()
+        const removedFolderIds = new Set<string>(demoFolderIds)
         sp.folders = (sp.folders || []).filter((f) => {
+          if (demoFolderIds.has(f.id)) {
+            return false
+          }
           const fName = (f.name || "").trim().toLowerCase()
           const fStripped = fName
             .replace(/^(\p{Extended_Pictographic})\s*/u, "")
@@ -180,14 +178,21 @@ export async function getArcState(): Promise<ArcState> {
           return true
         })
 
-        // Remove pins that were inside accidental folders and deduplicate remaining pins by URL
+        // Remove demo pins, pins inside accidental folders, mass-imported group pins, and chrome://extensions
         const seenUrls = new Set<string>()
         sp.pinnedTabs = (sp.pinnedTabs || []).filter((p) => {
+          if (demoPinIds.has(p.id) || /^pin-\d+-\d+$/.test(p.id)) {
+            return false
+          }
           if (p.folderId && removedFolderIds.has(p.folderId)) {
             return false
           }
           const key = (p.url || "").trim().toLowerCase()
-          if (!key || seenUrls.has(key)) {
+          if (
+            !key ||
+            key.startsWith("chrome://extensions") ||
+            seenUrls.has(key)
+          ) {
             return false
           }
           seenUrls.add(key)
@@ -204,6 +209,12 @@ export async function getArcState(): Promise<ArcState> {
       showFavoritesGrid: needsMigration
         ? false
         : (raw.showFavoritesGrid ?? false),
+      tidyGroupedMode: raw.tidyGroupedMode ?? false,
+      tidyFallbackByDomain: raw.tidyFallbackByDomain ?? true,
+      tidyRules:
+        Array.isArray(raw.tidyRules) && raw.tidyRules.length > 0
+          ? raw.tidyRules
+          : structuredClone(DEFAULT_TIDY_RULES),
       spaces: rawSpaces,
       favorites: Array.isArray(raw.favorites)
         ? raw.favorites

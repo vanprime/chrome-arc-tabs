@@ -56,6 +56,13 @@ export interface ArcArchiveEntry {
   reason: string
 }
 
+export interface ArcTidyRule {
+  id: string
+  name: string
+  icon: string
+  keywords: string[]
+}
+
 export interface ArcState {
   stateVersion: number
   activeSpaceId: string
@@ -65,6 +72,9 @@ export interface ArcState {
   dockedSidebarMode: boolean
   collapseNativeTabs: boolean
   showFavoritesGrid: boolean
+  tidyGroupedMode?: boolean
+  tidyFallbackByDomain?: boolean
+  tidyRules?: ArcTidyRule[]
   favorites: ArcFavorite[]
   spaces: ArcSpace[]
   tabSpaceMap: Record<number, string>

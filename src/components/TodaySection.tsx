@@ -9,6 +9,7 @@ import {
 import type {
   ArcSpace,
   ArcSplitPair,
+  ArcTidyRule,
   ContextMenuItem,
   DragPayload
 } from "~types/arc"
@@ -20,10 +21,13 @@ interface TodaySectionProps {
   splitPairs: ArcSplitPair[]
   viewAllSpacesTabs: boolean
   tidyGroupedMode: boolean
+  tidyRules?: ArcTidyRule[]
+  tidyFallbackByDomain?: boolean
   dragPayload: DragPayload | null
   onDragStartItem: (payload: DragPayload) => void
   onToggleScope: () => Promise<void>
   onToggleTidyMode: () => void
+  onOpenTidyConfig: () => void
   onClearTodayTabs: () => Promise<void>
   onOpenCommandBar: () => void
   onPinTab: (tab: chrome.tabs.Tab) => Promise<void>
@@ -43,10 +47,13 @@ export function TodaySection({
   splitPairs,
   viewAllSpacesTabs,
   tidyGroupedMode,
+  tidyRules,
+  tidyFallbackByDomain = true,
   dragPayload,
   onDragStartItem,
   onToggleScope,
   onToggleTidyMode,
+  onOpenTidyConfig,
   onClearTodayTabs,
   onOpenCommandBar,
   onPinTab,
@@ -268,9 +275,14 @@ export function TodaySection({
   }
 
   const buckets = new Map<string, chrome.tabs.Tab[]>()
-  if (tidyGroupedMode && remainingTabs.length > 1) {
+  if (tidyGroupedMode && remainingTabs.length >= 1) {
     for (const tab of remainingTabs) {
-      const cat = categorizeTabDomain(tab.url)
+      const cat = categorizeTabDomain(
+        tab.url,
+        tab.title,
+        tidyRules,
+        tidyFallbackByDomain
+      )
       if (!buckets.has(cat)) buckets.set(cat, [])
       buckets.get(cat)?.push(tab)
     }
@@ -292,25 +304,58 @@ export function TodaySection({
         </div>
         <div className="divider-line" />
         <div className="divider-actions">
-          <button
-            type="button"
-            className="divider-btn tidy-btn"
-            title="Auto-group Today tabs by domain category"
-            onClick={onToggleTidyMode}>
-            <svg
-              aria-hidden="true"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round">
-              <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
-            </svg>
-            <span>Tidy</span>
-          </button>
+          <div className="tidy-action-group">
+            <button
+              type="button"
+              className={`divider-btn tidy-btn ${tidyGroupedMode ? "is-active" : ""}`}
+              title="Auto-group Today tabs by custom Tidy categories (Right-click or click ⚙ to configure)"
+              onClick={onToggleTidyMode}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                onOpenTidyConfig()
+              }}>
+              <svg
+                aria-hidden="true"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round">
+                <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
+              </svg>
+              <span>Tidy</span>
+            </button>
+            <button
+              type="button"
+              className="divider-btn tidy-config-btn"
+              title="Configure Tidy categories & rules"
+              aria-label="Configure Tidy categories and rules"
+              onClick={onOpenTidyConfig}>
+              <svg
+                aria-hidden="true"
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.1"
+                strokeLinecap="round"
+                strokeLinejoin="round">
+                <line x1="4" y1="21" x2="4" y2="14" />
+                <line x1="4" y1="10" x2="4" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12" y2="3" />
+                <line x1="20" y1="21" x2="20" y2="16" />
+                <line x1="20" y1="12" x2="20" y2="3" />
+                <line x1="2" y1="14" x2="6" y2="14" />
+                <line x1="10" y1="8" x2="14" y2="8" />
+                <line x1="18" y1="16" x2="22" y2="16" />
+              </svg>
+            </button>
+          </div>
           <button
             type="button"
             className="divider-btn clear-btn"
@@ -337,7 +382,7 @@ export function TodaySection({
       <section className="arc-today-section" aria-label="Today Open Tabs">
         <h2 className="sr-only">Today Tabs</h2>
 
-        {tidyGroupedMode && remainingTabs.length > 1 && (
+        {tidyGroupedMode && remainingTabs.length >= 1 && (
           <div className="tidy-groups-container">
             {Array.from(buckets.entries()).map(([category, groupTabs]) => (
               <div key={category} className="tidy-domain-card">
@@ -393,7 +438,7 @@ export function TodaySection({
             </li>
           ))}
 
-          {(!tidyGroupedMode || remainingTabs.length <= 1) &&
+          {(!tidyGroupedMode || remainingTabs.length === 0) &&
             remainingTabs.map((tab) => renderTodayTabRow(tab))}
         </ul>
       </section>

@@ -89,7 +89,7 @@ export function PinnedSection({
       <li
         key={pin.id}
         draggable
-        className={`tab-row pinned-tab-row ${linkedTab?.active ? "is-active" : ""}`}
+        className={`tab-row pinned-tab-row ${linkedTab?.active ? "is-active" : ""} ${linkedTab ? "is-live-pin" : "is-closed-pin"}`}
         onDragStart={(e) => {
           onDragStartItem({
             kind: "pinned",
@@ -167,7 +167,11 @@ export function PinnedSection({
         <button
           type="button"
           className="tab-main-click"
-          title={`${displayTitle}\n${displayUrl}`}
+          title={
+            linkedTab
+              ? `${displayTitle} (Open)\n${displayUrl}`
+              : `${displayTitle} (Closed Pin — Click to open)\n${displayUrl}`
+          }
           onClick={() => onActivatePinnedTab(pin, linkedTab)}>
           <img
             className="tab-favicon"
@@ -183,8 +187,12 @@ export function PinnedSection({
             }}
           />
           <span className="tab-title">{displayTitle}</span>
-          {linkedTab && (
+          {linkedTab ? (
             <span className="tab-live-dot" title="Open in current window" />
+          ) : (
+            <span className="pin-saved-badge" title="Saved Pin (Tab closed)">
+              Saved
+            </span>
           )}
         </button>
 
@@ -219,18 +227,27 @@ export function PinnedSection({
               ↩
             </button>
           )}
+          {linkedTab && (
+            <button
+              type="button"
+              className="row-action-btn"
+              title="Close tab (Keep pinned)"
+              aria-label="Close tab (Keep pinned)"
+              onClick={(e) => {
+                e.stopPropagation()
+                onCloseOrUnpinTab(pin, linkedTab)
+              }}>
+              —
+            </button>
+          )}
           <button
             type="button"
             className="row-action-btn"
-            title={
-              linkedTab ? "Close tab (Keep pinned)" : "Remove pinned tab"
-            }
-            aria-label={
-              linkedTab ? "Close tab (Keep pinned)" : "Remove pinned tab"
-            }
+            title="Unpin from Space"
+            aria-label="Unpin from Space"
             onClick={(e) => {
               e.stopPropagation()
-              onCloseOrUnpinTab(pin, linkedTab)
+              onCloseOrUnpinTab(pin, undefined)
             }}>
             ×
           </button>

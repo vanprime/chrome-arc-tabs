@@ -4,11 +4,16 @@ import { ArchiveDialog } from "~components/modals/ArchiveDialog"
 import { CommandDialog } from "~components/modals/CommandDialog"
 import { FolderDialog } from "~components/modals/FolderDialog"
 import { SpaceDialog } from "~components/modals/SpaceDialog"
+import { TidyDialog } from "~components/modals/TidyDialog"
 import { PinnedSection } from "~components/PinnedSection"
 import { SpacesTopSwitcher } from "~components/SpacesTopSwitcher"
 import { TodaySection } from "~components/TodaySection"
 import { TopBar } from "~components/TopBar"
-import { DEFAULT_ARC_STATE, saveArcState } from "~lib/storage"
+import {
+  DEFAULT_ARC_STATE,
+  DEFAULT_TIDY_RULES,
+  saveArcState
+} from "~lib/storage"
 import {
   cleanTrackingUrl,
   formatCleanDomain,
@@ -31,12 +36,12 @@ export default function ArcSidePanel() {
   const [windowState, setWindowState] = useState<string>("normal")
   const [windowType, setWindowType] = useState<string>("normal")
   const [filterQuery, setFilterQuery] = useState("")
-  const [tidyGroupedMode, setTidyGroupedMode] = useState(false)
   const [dragPayload, setDragPayload] = useState<DragPayload | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   // Modal states
   const [isCommandOpen, setIsCommandOpen] = useState(false)
+  const [isTidyDialogOpen, setIsTidyDialogOpen] = useState(false)
   const [spaceModalState, setSpaceModalState] = useState<{
     open: boolean
     isNew: boolean
@@ -184,6 +189,12 @@ export default function ArcSidePanel() {
     const handleTabEvent = () => {
       refreshSnapshot()
     }
+    const handleTabRemoved = (removedTabId: number) => {
+      setTabs((prev) => prev.filter((t) => t.id !== removedTabId))
+      setTimeout(() => {
+        refreshSnapshot()
+      }, 40)
+    }
     const handleTabUpdated = (
       _tabId: number,
       changeInfo: chrome.tabs.TabChangeInfo
@@ -219,7 +230,7 @@ export default function ArcSidePanel() {
     }
 
     chrome.tabs.onCreated.addListener(handleTabEvent)
-    chrome.tabs.onRemoved.addListener(handleTabEvent)
+    chrome.tabs.onRemoved.addListener(handleTabRemoved)
     chrome.tabs.onActivated.addListener(handleTabEvent)
     chrome.tabs.onMoved.addListener(handleTabEvent)
     chrome.tabs.onUpdated.addListener(handleTabUpdated)
@@ -228,7 +239,7 @@ export default function ArcSidePanel() {
 
     return () => {
       chrome.tabs.onCreated.removeListener(handleTabEvent)
-      chrome.tabs.onRemoved.removeListener(handleTabEvent)
+      chrome.tabs.onRemoved.removeListener(handleTabRemoved)
       chrome.tabs.onActivated.removeListener(handleTabEvent)
       chrome.tabs.onMoved.removeListener(handleTabEvent)
       chrome.tabs.onUpdated.removeListener(handleTabUpdated)
@@ -533,14 +544,6 @@ export default function ArcSidePanel() {
         filterQuery={filterQuery}
         onFilterChange={setFilterQuery}
         onOpenCommandBar={() => setIsCommandOpen(true)}
-        onNavigateOmnibox={async (input, newTab) => {
-          await chrome.runtime.sendMessage({
-            type: "NAVIGATE_ACTIVE_TAB",
-            input,
-            newTab
-          })
-          await refreshSnapshot()
-        }}
         onCopyCleanUrl={async () => {
           if (activeTab?.url) {
             const clean = cleanTrackingUrl(activeTab.url)
@@ -725,7 +728,9 @@ export default function ArcSidePanel() {
           todayTabs={todayTabs}
           splitPairs={arcState.splitPairs || []}
           viewAllSpacesTabs={arcState.viewAllSpacesTabs}
-          tidyGroupedMode={tidyGroupedMode}
+          tidyGroupedMode={Boolean(arcState.tidyGroupedMode)}
+          tidyRules={arcState.tidyRules || DEFAULT_TIDY_RULES}
+          tidyFallbackByDomain={arcState.tidyFallbackByDomain !== false}
           dragPayload={dragPayload}
           onDragStartItem={setDragPayload}
           onToggleScope={async () => {
@@ -739,17 +744,18 @@ export default function ArcSidePanel() {
                 : `Showing only ${activeSpace.name} tabs`
             )
           }}
-          onToggleTidyMode={() => {
-            setTidyGroupedMode((prev) => {
-              const next = !prev
-              showToast(
-                next
-                  ? "✨ Tidied Today tabs by domain"
-                  : "Restored standard tab list"
-              )
-              return next
+          onToggleTidyMode={async () => {
+            const next = !arcState.tidyGroupedMode
+            await updateAndPersistState((draft) => {
+              draft.tidyGroupedMode = next
             })
+            showToast(
+              next
+                ? "✨ Tidied Today tabs by custom categories"
+                : "Restored standard tab list"
+            )
           }}
+          onOpenTidyConfig={() => setIsTidyDialogOpen(true)}
           onClearTodayTabs={clearTodayTabs}
           onOpenCommandBar={() => setIsCommandOpen(true)}
           onPinTab={(tab) => pinTabToActiveSpace(tab, null)}
@@ -933,6 +939,19 @@ export default function ArcSidePanel() {
         <button
           type="button"
           className="popover-action-item"
+          onClick={() => {
+            const pop = document.getElementById("settings-popover") as any
+            if (pop && typeof pop.hidePopover === "function") {
+              pop.hidePopover()
+            }
+            setIsTidyDialogOpen(true)
+          }}>
+          <span>✨ Configure Tidy Rules &amp; Categories...</span>
+        </button>
+
+        <button
+          type="button"
+          className="popover-action-item"
           onClick={suspendInactiveTabs}>
           <span>💤 Suspend Inactive Tabs (Save Memory)</span>
         </button>
@@ -995,12 +1014,32 @@ export default function ArcSidePanel() {
           await refreshSnapshot()
         }}
         onActivateOrOpenUrl={activateOrOpenUrl}
-        onToggleTidyMode={() => {
-          setTidyGroupedMode((prev) => !prev)
+        onToggleTidyMode={async () => {
+          const next = !arcState.tidyGroupedMode
+          await updateAndPersistState((draft) => {
+            draft.tidyGroupedMode = next
+          })
         }}
         onCopyCleanUrl={copyTextWithToast}
         onClearTodayTabs={clearTodayTabs}
         onSuspendInactiveTabs={suspendInactiveTabs}
+      />
+
+      <TidyDialog
+        isOpen={isTidyDialogOpen}
+        rules={arcState.tidyRules || DEFAULT_TIDY_RULES}
+        fallbackByDomain={arcState.tidyFallbackByDomain !== false}
+        onClose={() => setIsTidyDialogOpen(false)}
+        onSaveTidyConfig={async ({ rules, fallbackByDomain }) => {
+          await updateAndPersistState((draft) => {
+            draft.tidyRules = rules
+            draft.tidyFallbackByDomain = fallbackByDomain
+            draft.tidyGroupedMode = true
+          })
+          showToast(
+            `Saved ${rules.length} Tidy categor${rules.length === 1 ? "y" : "ies"} (Persisted Locally)`
+          )
+        }}
       />
 
       <SpaceDialog
